@@ -67,7 +67,18 @@ void NativeVendor::frame() {
 bool NativeVendor::selected_custom()const{
     const auto base=level(vendor_menu);const int count=read<int>(base+count_offset),selected=read<int>(base+selection_offset);
     return count>0&&count<=16&&selected>=0&&selected<count&&
-        read<Row>(base+rows_offset+unsigned(selected)*sizeof(Row)).unused==custom_row_marker;
+        custom_row(read<Row>(base+rows_offset+unsigned(selected)*sizeof(Row)));
+}
+bool NativeVendor::has_custom_rows()const{
+    if (!supported()) return false;
+    const auto base = level(vendor_menu);
+    if (!valid(base, count_offset + sizeof(int))) return false;
+    const int count = read<int>(base + count_offset);
+    if (count <= 0 || count > 16) return false;
+    for (int i = 0; i < count; ++i) {
+        if (custom_row(read<Row>(base + rows_offset + unsigned(i) * sizeof(Row)))) return true;
+    }
+    return false;
 }
 unsigned NativeVendor::icon_bank_for_row(unsigned index)const{
     if(!supported())return 0;

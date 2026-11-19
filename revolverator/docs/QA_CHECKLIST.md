@@ -38,6 +38,11 @@ results are indexed in [NATIVE_VALIDATION.md](NATIVE_VALIDATION.md).
 - Test tap versus minimum uninterrupted hold, capture, spin, throw, impact and
   rapid reuse. Verify one round per activation and capacity 20.
 - Test Hoven purchase, normal ammo pickup/refill and the Novalis Golden purchase.
+- Open Gadgetron before Revolverator appears, then open a list with a supported
+  Revolverator weapon or ammo row. Check that the stock-only list uses the
+  original draw and both lists keep native scroll and selection behavior.
+- During acquisition, queue a native head or body change and a newer hand
+  selection. Completion must leave those updates in place.
 - Verify excluded heavy enemies receive native melee damage; Blarg Commanders
   remain capturable. Check eligible light targets near excluded targets.
 - Confirm the 50% carry-speed limit and release recovery without altering
@@ -45,6 +50,9 @@ results are indexed in [NATIVE_VALIDATION.md](NATIVE_VALIDATION.md).
 - Exercise weapon-menu confirmation, scrolling and eight quick-select slots.
 - Save and reload independent ownership/ammo/Gold/favorites; reject corrupt,
   absent or mismatched sidecars and preserve native Walloper state.
+- Run New Game Plus on an isolated card. Check that the native reset determines
+  which stock favorites and equipment survive, and that owned Revolverator
+  bindings return without replacing a native favorite.
 - With XP enabled, confirm earned custom XP, separate Walloper XP, level-up
   presentation and no credit for suppressed hits or duplicate death records.
 

@@ -52,6 +52,8 @@ int sdk_hook(openrac_mod*, const char* id, const char* signature, void* target, 
     if(missing_strip&&id&&!std::strcmp(id,"rac1.vendor.icon_strip.draw"))return OPENRAC_HOOK_UNKNOWN;
     if (official && std::strcmp(id, "rac1.menu.item_grid.draw") == 0)
         CHECK(std::strcmp(signature, "i32(u32)") == 0);
+    else if (official && std::strcmp(id, "rac1.vendor.icon_strip.draw") == 0)
+        CHECK(std::strcmp(signature, "void()") == 0);
     else {CHECK(std::strcmp(id, "rac1.item.give") == 0); CHECK(std::strcmp(signature, "void(i32,i32)") == 0);}
     CHECK(target == reinterpret_cast<void*>(replacement));
     *next = reinterpret_cast<void*>(original); return OPENRAC_HOOK_OK;
@@ -92,17 +94,22 @@ int main() {
     commit_status = ARSENAL_HOOKS_INCOMPLETE;
     CHECK(throws([&] { NativeRuntimeHooks hooks(&api, nullptr, query); hooks.commit(); }).find("rac1.menu.item_grid.draw") != std::string::npos);
     CHECK(rollbacks == 2 && commits == 2);
-    for(unsigned minor:{12u,13u}){
+    for(unsigned minor:{12u,13u,20u,21u}){
         api.api_major=1;api.api_minor=static_cast<unsigned short>(minor);official=true;
         const auto prior_resolves=resolver_calls,prior_claims=claims,prior_binds=binds,prior_commits=commits,prior_rollbacks=rollbacks,prior_sdk=sdk_calls;
         {
             NativeRuntimeHooks hooks(&api,nullptr,query);void* next{};
             CHECK(hooks.bind("rac1.menu.item_grid.draw","i32(u32)",reinterpret_cast<void*>(replacement),&next)==OPENRAC_HOOK_OK);
             CHECK(next==reinterpret_cast<void*>(original));
+            if (minor >= 20) {
+                next = nullptr;
+                CHECK(hooks.bind("rac1.vendor.icon_strip.draw","void()",reinterpret_cast<void*>(replacement),&next)==OPENRAC_HOOK_OK);
+                CHECK(next==reinterpret_cast<void*>(original));
+            }
             hooks.commit();CHECK(hooks.diagnostic().find("Official OpenRAC")!=std::string::npos);
         }
         CHECK(resolver_calls==prior_resolves&&claims==prior_claims&&binds==prior_binds&&commits==prior_commits&&rollbacks==prior_rollbacks);
-        CHECK(sdk_calls==prior_sdk+1);
+        CHECK(sdk_calls==prior_sdk+(minor>=20?2u:1u));
     }
     api.api_major=1;api.api_minor=11;official=false;
     CHECK(throws([&] { NativeRuntimeHooks hooks(&api,nullptr,absent); }).find("Arsenal Compatibility")!=std::string::npos);

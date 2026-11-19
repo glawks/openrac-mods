@@ -14,6 +14,7 @@
 
 namespace revolverator {
 namespace {
+constexpr unsigned vendor_icon_strip_interface = 20;
 const arsenal_hooks_api_v1* existing_provider(std::uint32_t version) {
 #if defined(_WIN32)
     const auto image = GetModuleHandleW(L"arsenal_compat.dll");
@@ -64,7 +65,13 @@ int NativeRuntimeHooks::bind(const char* id, const char* signature, void* replac
     if(!official_&&provider_->owns_id(id))return provider_->bind(id,signature,replacement,original);
     // A refused official hook poisons the loader transaction. Do not probe
     // a known private point through api.hook before installing its adapter.
-    if(official_&&id&&(!std::strcmp(id,"rac1.vendor.icon_strip.draw")||!std::strcmp(id,"rac1.menu.preview.pose")))return bind_private(id,signature,replacement,original);
+    if (official_ && id) {
+        const bool icon_strip = std::strcmp(id, "rac1.vendor.icon_strip.draw") == 0;
+        const bool preview_pose = std::strcmp(id, "rac1.menu.preview.pose") == 0;
+        if (preview_pose || (icon_strip && api_->api_minor < vendor_icon_strip_interface)) {
+            return bind_private(id, signature, replacement, original);
+        }
+    }
     return api_->hook(mod_,id,signature,replacement,original);
 }
 
@@ -84,7 +91,12 @@ void NativeRuntimeHooks::commit() {
 }
 
 std::string NativeRuntimeHooks::diagnostic() const {
-    if (official_) return "Official OpenRAC hook chains with typed native icon-strip and preview-pose adapters";
+    if (official_) {
+        if (api_->api_minor >= vendor_icon_strip_interface) {
+            return "Official OpenRAC hook chains including the vendor icon strip, with a native preview-pose adapter";
+        }
+        return "Official OpenRAC hook chains with typed native icon-strip and preview-pose adapters";
+    }
     arsenal_hooks_diagnostics_v1 info{};
     info.size = sizeof info;
     if (provider_->diagnostics(&info) != ARSENAL_HOOKS_OK) return "diagnostics unavailable";

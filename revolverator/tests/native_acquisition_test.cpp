@@ -118,10 +118,16 @@ int main(){
                 "retail camera path is rotated toward the side already visible to the gameplay camera");
         std::array<unsigned char,22> report{};report.fill(0x33);f.acquisition.filter_report(report.data(),20);
         require(report[0]==255&&report[1]==255&&report[2]==128&&report[5]==128&&report[6]==0&&report[17]==0&&report[18]==0x33&&report[21]==0x33,"held attack, movement, Start and pressure are neutralized without writing beyond native report bytes");
-        put<unsigned short>(Body+0x34,0x305);put(Body+0x3c,0x777777u);f.end();
+        put<unsigned short>(Body+0x34,0x305);put(Body+0x3c,0x777777u);
+        // A native reward may change one worn slot and queue another while
+        // the scene owns the hand slot. Neither belongs to the presentation.
+        put(0x141660+4,5);put(Hero+0x20c0,7);
+        f.end();
         require(!f.acquisition.active()&&!f.acquisition.pending()&&placements==1&&restores==1,"completion consumes one request and releases projection exactly once");
         require(get<std::array<float,4>>(Hero+0x80)==f.position&&get<std::array<float,4>>(Hero+0x90)==f.rotation&&get<std::array<float,4>>(Hero+0xe0)==f.velocity,"returns to the precise original position, facing and velocity");
-        require(get<std::array<int,7>>(0x141660)==f.equipment&&get<int>(Hero+0x20b8)==15&&get<int>(Hero+0x20bc)==9,"restores equipment and other pending slots using native item switching, without restoring actor pointers");
+        require(get<int>(0x141660)==15&&get<int>(Hero+0x20b8)==15,"restores the scene's temporary hand selection and requeues the previous item");
+        require(get<int>(0x141660+4)==5&&get<int>(Hero+0x20bc)==9&&get<int>(Hero+0x20c0)==7,
+                "preserves both changed and unchanged native equipment outside the hand slot");
         require(get<unsigned short>(Body+0x34)==0x304&&get<unsigned char>(Hero+0x20a5)==0&&get<unsigned char>(Hero+0x20ac)==0,"restores the owned hide bit and input locks while preserving unrelated flag changes and lighting");
         require(!std::memcmp(ram+Vendor,f.vendor.data(),f.vendor.size()),"restores the original native vendor/menu state");
         require(f.inventory()==inventory&&get<int>(0x15ed98)==76543,"presentation never grants ammunition, ownership, Gold flags, XP or spends bolts");
@@ -146,8 +152,19 @@ int main(){
         require(placements==0&&get<unsigned short>(Body+0x34)==0x777,"recycled hero identity is never repositioned or given the former actor's flags");}
     {Fixture f;f.begin();loaded=2;const auto before=f.memory;f.acquisition.frame(true,false);
         require(f.memory==before&&restores==1&&!f.acquisition.pending(),"a level change abandons old guest pointers without writing into the new epoch");}
-    {Fixture f;f.begin();put(Vendor+0x28,0xabcdefu);put(Vendor+0x14,0x12345678u);f.end();
-        require(get<unsigned>(Vendor+0x14)==0x12345678u,"a foreign replacement vendor context is preserved");}
+    {Fixture f;f.begin();put(Hero+0x20b8,10);f.end();
+        require(get<int>(Hero+0x20b8)==10&&get<int>(0x141660)==18,
+                "a newer native pending hand request takes precedence over acquisition restoration");}
+    {Fixture f;f.begin();put(0x141660,10);put(Hero+0x20b8,0);f.end();
+        require(get<int>(Hero+0x20b8)==0&&get<int>(0x141660)==10,
+                "a committed native hand switch is preserved after its pending request was consumed");}
+    {Fixture f;f.begin();put(Vendor+0x28,0xabcdefu);put(Vendor+0x14,0x12345678u);put(Hero+0x20b8,10);
+        f.acquisition.frame(true,false);
+        require(get<unsigned>(Vendor+0x14)==0x12345678u&&get<int>(Hero+0x20b8)==10&&placements==0&&!f.acquisition.active(),
+                "a replacement vendor context keeps its scene, equipment and position");}
+    {Fixture f;f.begin();put(Mode,6);const auto before=f.memory;f.acquisition.reset();
+        require(f.memory==before&&restores==1&&!f.acquisition.active(),
+                "same-level transition cannot restore equipment or scene state into reclaimed guest memory");}
     {Fixture f;present_available=false;require(f.acquisition.request(),"missing-binding request queued");f.acquisition.frame(true,false);
         require(!f.acquisition.active()&&f.acquisition.pending()&&presentations==0&&projects==0,"missing native presenter fails closed without locking input or changing projection");}
     {Fixture f;f.arena.reset();require(f.acquisition.request(),"missing-arena request queued");f.acquisition.frame(true,false);

@@ -7,7 +7,9 @@
 
 namespace revolverator {
 namespace {
-constexpr unsigned Hero=0x13f350,Equipment=0x141660,ItemInHand=0x140408;
+constexpr unsigned Hero=0x13f350,HandSelection=0x141660,ItemInHand=0x140408;
+constexpr unsigned PendingHand=0x20b8;
+constexpr int SceneItem=18;
 constexpr unsigned BufferBytes=0x120;
 template<std::size_t N>bool finite(const std::array<float,N>& values){
     return std::all_of(values.begin(),values.end(),[](float value){return std::isfinite(value);});
@@ -27,9 +29,12 @@ bool NativeAcquisition::supported()const{
         api_->loaded_level()>=0&&api_->loaded_level()<=18;
 }
 bool NativeAcquisition::same_level()const{
-    return supported()&&api_->loaded_level()==level_&&hero_==global(Hero)&&
+    return supported()&&!level_transitioning()&&api_->loaded_level()==level_&&hero_==global(Hero)&&
         mode_==level(0x15f5c4)&&vendor_==level(1,0x1ca940)&&
         arena_.owns(buffer_,BufferBytes);
+}
+bool NativeAcquisition::owns_scene()const{
+    return same_level()&&read<unsigned>(vendor_+0x28)==buffer_;
 }
 bool NativeAcquisition::bindings_ready(){
     present_=reinterpret_cast<Present>(find_function("FUN_L01_002aea70"));
@@ -38,8 +43,8 @@ bool NativeAcquisition::bindings_ready(){
     vendor_=level(1,0x1ca940);scene_=level(1,0x16cce0);
     const auto scenes=level(1,0x1ca4a0);
     if(!present_||!place_||!valid(hero_,0x22d8)||!valid(mode_,4)||!valid(vendor_,vendor_snapshot_.size())||
-       !valid(scene_,0x1c0)||!valid(scenes+18*4,4)||read<int>(scenes+18*4)<0||
-       !valid(global(Equipment),sizeof equipment_)||!valid(global(ItemInHand),4))return false;
+       !valid(scene_,0x1c0)||!valid(scenes+SceneItem*4,4)||read<int>(scenes+SceneItem*4)<0||
+       !valid(global(HandSelection),4)||!valid(global(ItemInHand),4))return false;
     if(!arena_.owns(buffer_,BufferBytes))buffer_=arena_.allocate(BufferBytes);
     return arena_.owns(buffer_,BufferBytes)&&valid(buffer_,BufferBytes);
 }
@@ -59,7 +64,7 @@ bool NativeAcquisition::snapshot_ready()const{
 }
 bool NativeAcquisition::quiet_player()const{
     const auto velocity=read<std::array<float,4>>(hero_+0xe0);
-    const int held=read<int>(global(ItemInHand)),pending=read<int>(hero_+0x20b8);
+    const int held=read<int>(global(ItemInHand)),pending=read<int>(hero_+PendingHand);
     return !read<unsigned char>(hero_+0x20a8)&&finite(velocity)&&
         velocity[0]*velocity[0]+velocity[1]*velocity[1]<=.0001f&&(pending==0||pending==held);
 }
@@ -68,7 +73,7 @@ void NativeAcquisition::frame(bool safe,bool external_active){
     const int current=api_->loaded_level();
     if(current!=level_){if(level_>=0)reset();level_=current;}
     if(presenting_){
-        if(!same_level()){reset();return;}
+        if(!owns_scene()){finish(false);return;}
         pose_items();hide_player();
         if(read<int>(mode_)!=0){settled_=0;return;}
         // This is a native update barrier, not a wall-clock delay. Retain two
@@ -103,7 +108,8 @@ void NativeAcquisition::begin(){
     body_={body,read<unsigned>(body+0x24),read<unsigned>(body+0x78),read<unsigned>(body+0x38)};
     position_=read<decltype(position_)>(hero_+0x80);rotation_=read<decltype(rotation_)>(hero_+0x90);
     velocity_=read<decltype(velocity_)>(hero_+0xe0);
-    equipment_=read<decltype(equipment_)>(global(Equipment));pending_items_=read<decltype(pending_items_)>(hero_+0x20b8);
+    previous_selection_=read<int>(global(HandSelection));
+    previous_pending_hand_=read<int>(hero_+PendingHand);
     previous_item_=read<int>(global(ItemInHand));
     lock_a_=read<unsigned char>(hero_+0x20a5);lock_b_=read<unsigned char>(hero_+0x20ac);
     std::memcpy(vendor_snapshot_.data(),api_->memory+vendor_,vendor_snapshot_.size());
@@ -115,8 +121,8 @@ void NativeAcquisition::begin(){
         projected_=true;if(context_.project)context_.project(context_.user);
         // The native item remains18. Context owns the logical Revo/Gold name,
         // model and metadata; the scene contains only native safe item IDs.
-        present_(buffer_,18);
-        if(!same_level()){reset();return;}
+        present_(buffer_,SceneItem);
+        if(!owns_scene()){finish(false);return;}
         align_scene(camera);pose_items();hide_player();
     }catch(...){finish(false);throw;}
 }
@@ -178,25 +184,33 @@ void NativeAcquisition::restore_context()noexcept{
     if(owned&&context_.restore)try{context_.restore(context_.user);}catch(...){}
 }
 void NativeAcquisition::finish(bool place_player)noexcept{
-    const bool completed=place_player&&body_valid()&&read<int>(mode_)==0;
+    const bool owned_scene=owns_scene();
+    const bool completed=place_player&&owned_scene&&body_valid()&&read<int>(mode_)==0;
     const unsigned completed_level=requests_?request_levels_[request_head_]:0;
     if(same_level()){
-        if(place_player&&body_valid()&&read<int>(mode_)==0){
+        if(completed){
             write(buffer_+0x100,position_);write(buffer_+0x110,rotation_);
             try{place_(buffer_+0x100,buffer_+0x110,0,1);}catch(...){}
             write(hero_+0xe0,velocity_);
-            write(global(Equipment),equipment_);
-            auto pending=pending_items_;
-            // Native scene consumes pending18. Request the previously held item
-            // again through native switching; never restore stale moby pointers.
-            if(!pending[0])pending[0]=previous_item_;
-            write(hero_+0x20b8,pending);
+            const auto selection=global(HandSelection);
+            const int selected=read<int>(selection);
+            const int pending=read<int>(hero_+PendingHand);
+            // The vendor scene changes only the hand. Its request may have
+            // been consumed already. Yield to a newer native hand selection
+            // or request and leave all other equipment and pending slots alone.
+            const bool scene_selection=selected==0||selected==SceneItem||selected==previous_selection_;
+            if(scene_selection&&(pending==0||pending==SceneItem)){
+                if(selected==SceneItem)write(selection,previous_selection_);
+                const int previous=previous_pending_hand_?previous_pending_hand_:previous_item_;
+                if(previous)write(hero_+PendingHand,previous);
+            }
         }
         restore_body();
-        if(read<unsigned char>(hero_+0x20a5)==1)write(hero_+0x20a5,lock_a_);
-        if(read<unsigned char>(hero_+0x20ac)==1)write(hero_+0x20ac,lock_b_);
-        // A later foreign vendor/scene retains its own state.
-        if(read<unsigned>(vendor_+0x28)==buffer_)std::memcpy(api_->memory+vendor_,vendor_snapshot_.data(),vendor_snapshot_.size());
+        if(owned_scene){
+            if(read<unsigned char>(hero_+0x20a5)==1)write(hero_+0x20a5,lock_a_);
+            if(read<unsigned char>(hero_+0x20ac)==1)write(hero_+0x20ac,lock_b_);
+            std::memcpy(api_->memory+vendor_,vendor_snapshot_.data(),vendor_snapshot_.size());
+        }
     }else hidden_=false;
     presenting_=preparing_=false;quiet_=settled_=0;body_={};
     if(requests_){--requests_;request_head_=(request_head_+1)%maximum_pending;}

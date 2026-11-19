@@ -69,8 +69,12 @@ struct Fixture {
         std::array<Row,16> data{};for(unsigned i=0;i<rows.size()&&i<data.size();++i)data[i]=rows[i];
         put(menu+0xd0,data);put(menu+0x210,int(rows.size()));put(menu+0x58,selection);put(menu+0x4c,scroll);
     }
-    void strip(unsigned count,int selected,int scroll=0){
+    void strip(unsigned count,int selected,int scroll=0,bool custom=true){
         std::vector<Row> rows_data;for(unsigned i=0;i<count;++i)rows_data.push_back({int(i%37),int(i&1u),0,0,0});
+        if (custom && !rows_data.empty()) {
+            rows_data.back().item = 18;
+            rows_data.back().unused = marker;
+        }
         rows(rows_data,selected,scroll);
     }
     void tables_restored()const{require(get<std::array<unsigned,5>>(overlay+0x18)==previous_tables,"overlay HUD words restored after pass");require(get<std::array<unsigned,5>>(resident+0x18)==native_tables,"resident HUD words unchanged");}
@@ -97,7 +101,8 @@ int main(){
         Fixture f;f.strip(count,selected);require(f.icons.draw()&&f.sprites.size()==11&&f.rectangles.size()==3,"large strip keeps eleven wrapped native cells and highlight");
         for(unsigned i=0;i<11;++i){
             const unsigned row=unsigned((int(count)*2+selected-5+int(i))%int(count));
-            require(f.lookups[i].bank==60000+int(row)&&f.lookups[i].frame==int(row&1u)*2,"wrapped cell resolves the corresponding logical row");
+            const int expected_bank = row == count - 1 ? 60037 : 60000 + int(row);
+            require(f.lookups[i].bank==expected_bank&&f.lookups[i].frame==int(row&1u)*2,"wrapped cell resolves the corresponding logical row");
             const auto& s=f.sprites[i];require(s.x==-100+int(i)*56&&s.y==6&&s.width==48&&s.height==48&&static_cast<unsigned>(s.alpha)==0x80808080u,"large-strip geometry and native alpha bit pattern preserved");
         }
         require(f.rectangles[1].x0==176&&f.rectangles[1].x1==232&&f.rectangles[2].x0==178&&f.rectangles[2].x1==230,"large-strip central highlight exact");f.tables_restored();
@@ -107,6 +112,14 @@ int main(){
         require(f.icons.draw()&&f.rectangles.size()==1&&f.sprites.size()==11,"moving strip omits highlight even on the frame reaching zero");
         require(f.get<int>(menu+0x4c)==after&&f.sprites[0].x==after-100,"native scroll advances exactly four pixels before placing icons");
         f.tables_restored();require(f.ram==expected,"scroll offset is the only persistent guest mutation");
+    }
+    {
+        Fixture f;f.strip(8,0,56,false);
+        f.put<int>(menu+0xd0+12,marker); // A marker alone does not own a native row.
+        const auto before=f.ram;
+        require(!f.icons.draw(),"a stock vendor strip remains under the native draw hook");
+        f.no_packets();
+        require(f.ram==before,"stock vendor selection and scroll are untouched");
     }
     for(unsigned timer:{0u,1u,7u,8u,15u,16u,0xffffffffu}){
         Fixture f;f.strip(2,0);f.put(menu+4,timer);require(f.icons.draw(),"native timer pattern handled");
@@ -125,7 +138,7 @@ int main(){
     {Fixture f;f.strip(2,0);f.api.version="pal";require(!f.icons.draw(),"PAL refused without native changes");f.no_packets();}
     {Fixture f;f.strip(2,0);f.api.game="other";require(!f.icons.draw(),"other game refused without native changes");f.no_packets();}
     {Fixture f;f.strip(8,0,0x7fffffff);require(!f.icons.draw(),"corrupt scroll cannot overflow native coordinates");f.no_packets();}
-    {Fixture f;f.rows({{999,0,0,0,0}});require(!f.icons.draw(),"invalid native row bank fails before native clear");f.no_packets();}
+    {Fixture f;f.rows({{999,0,0,0,0},{18,0,0,marker,0}});require(!f.icons.draw(),"invalid native row bank fails before native clear");f.no_packets();}
     {Fixture f;f.strip(1,0);f.foreign_edit=true;require(f.icons.draw(),"single-cell pass permits foreign late HUD-table edit");
      auto expected=f.previous_tables;expected[3]=0x12345678u;require(f.get<std::array<unsigned,5>>(overlay+0x18)==expected,"scope restores its four unchanged words and preserves another owner's fifth word");}
     std::printf("native vendor icons: %u checks passed\n",checks);

@@ -189,20 +189,21 @@ template<int Index,int(NativeWeaponMenu::*Method)(unsigned,NativeWeaponMenu::Cal
 // RAM restoration are scoped; the native save file is never patched afterward.
 class NativeSaveScope {
  Session& owner_;arsenal::WeaponKey previous_;
- std::array<int,8> quick_{};std::array<int,7> equipment_{};
+ NativeSaveFields fields_;
+ bool campaign_transition_=false;
 public:
- explicit NativeSaveScope(Session& owner):owner_(owner),previous_(owner.arsenal.projected()){
+ explicit NativeSaveScope(Session& owner)
+  :owner_(owner),previous_(owner.arsenal.projected()),fields_(owner.api,owner.registry){
   ++owner_.native_save_depth;
-  auto& w=owner_.world;
-  quick_=w.read<decltype(quick_)>(w.global(0x141ea0));
-  equipment_=w.read<decltype(equipment_)>(w.global(0x141660));
-  owner_.arsenal.project(arsenal::NativeWalloperKey);owner_.arsenal.project_quick_slots(true);
-  if(owner_.registry.descriptor(owner_.registry.equipped()))w.write<int>(w.global(0x141660),int(arsenal::NativeWrenchKey));
+  owner_.arsenal.project(arsenal::NativeWalloperKey);
  }
  ~NativeSaveScope(){
-  auto& w=owner_.world;w.write(w.global(0x141ea0),quick_);w.write(w.global(0x141660),equipment_);
   --owner_.native_save_depth;
-  owner_.arsenal.project(previous_);
+  if(!campaign_transition_)owner_.arsenal.project(previous_);
+ }
+ bool accept_campaign_transition(){
+  campaign_transition_=fields_.accept_campaign_transition();
+  return campaign_transition_;
  }
 };
 void canonicalize_weapon(unsigned moby){
@@ -428,17 +429,17 @@ int quick_draw(unsigned element){
  s.restore_context();return result;
 }
 void serialize(unsigned destination){
- if(!session||!session->arsenal.ready()){serialize_original(destination);return;}
+ if(!session||!session->arsenal.ready()||session->native_save_depth){serialize_original(destination);return;}
  auto& s=*session;s.saves.begin_save();{NativeSaveScope vanilla(s);serialize_original(destination);}
  s.restore_context();
 }
 void prepare_save(int port,int slot){
- if(!session||!session->arsenal.ready()){prepare_original(port,slot);return;}
+ if(!session||!session->arsenal.ready()||session->native_save_depth){prepare_original(port,slot);return;}
  auto& s=*session;s.saves.begin_save();{NativeSaveScope vanilla(s);prepare_original(port,slot);}
  s.saves.after_prepare();s.restore_context();
 }
 int autosave(int port,int slot){
- if(!session||!session->arsenal.ready())return autosave_original(port,slot);
+ if(!session||!session->arsenal.ready()||session->native_save_depth)return autosave_original(port,slot);
  auto& s=*session;s.saves.begin_save();int result;
  {NativeSaveScope vanilla(s);result=autosave_original(port,slot);}
  s.saves.after_prepare();s.restore_context();return result;
@@ -469,10 +470,20 @@ void new_game(){
 }
 void new_game_plus(int slot){
  if(!session){new_game_plus_original(slot);return;}
+ if(session->native_save_depth){new_game_plus_original(slot);return;}
  auto& s=*session;const bool previous=s.new_game_plus;s.new_game_plus=true;s.saves.begin_save();
- {NativeSaveScope vanilla(s);new_game_plus_original(slot);s.saves.import_native_state();}
- s.new_game_plus=previous;s.saves.after_prepare();s.arsenal.project_quick_slots();s.restore_context();
- if(s.registry.descriptor(s.registry.equipped()))s.world.write<int>(s.world.hero()+0x20b8,18);
+ bool advanced=false,merged=false;
+ {
+  NativeSaveScope vanilla(s);
+  new_game_plus_original(slot);
+  advanced=vanilla.accept_campaign_transition();
+  if(advanced)merged=s.saves.merge_new_game_plus();
+ }
+ s.new_game_plus=previous;
+ if(advanced)s.saves.after_prepare();
+ else s.saves.cancel_prepare();
+ if(merged)s.arsenal.project_quick_slots();
+ s.restore_context();
 }
 int get_state(revolverator_state_v1* out){
  if(!session||!out||out->size<sizeof(*out))return 0;

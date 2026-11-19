@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #include "native_arsenal_save.hpp"
+#include <algorithm>
 #include <cstdlib>
 #include <cstdio>
 #include <fstream>
@@ -18,6 +19,7 @@
 
 namespace revolverator {
 namespace {
+constexpr unsigned campaign_generation = 0x15ee20;
 using Path=std::filesystem::path;
 std::vector<Path> arguments(){
     std::vector<Path> result;
@@ -53,6 +55,40 @@ Path default_card_root(const char* serial){
 #endif
 }
 }
+NativeSaveFields::NativeSaveFields(const openrac_api* api, const arsenal::Registry& registry)
+    : Memory(api), level_(api->loaded_level()), campaign_generation_(read<unsigned>(global(campaign_generation))) {
+    const auto favourites = global(0x141ea0);
+    const auto& logical = registry.quick();
+    for (unsigned slot = 0; slot < logical.size(); ++slot) {
+        const auto* descriptor = registry.descriptor(logical[slot]);
+        if (descriptor && registry.owned(logical[slot])) {
+            mask(favourites + slot * sizeof(int), int(descriptor->carrier), 0);
+        }
+    }
+    const auto equipped = registry.equipped();
+    if (const auto* descriptor = registry.descriptor(equipped)) {
+        mask(global(0x141660), int(descriptor->carrier), int(arsenal::NativeWrenchKey));
+    }
+}
+void NativeSaveFields::mask(unsigned address, int original, int replacement) {
+    if (!valid(address, sizeof(int)) || read<int>(address) != original) return;
+    words_[count_++] = {address, original, replacement};
+    write(address, replacement);
+}
+NativeSaveFields::~NativeSaveFields() {
+    if (campaign_transition_ || api_->loaded_level() != level_) return;
+    for (unsigned i = 0; i < count_; ++i) {
+        const auto& word = words_[i];
+        if (read<int>(word.address) == word.masked) write(word.address, word.original);
+    }
+}
+bool NativeSaveFields::accept_campaign_transition() {
+    // The native challenge-mode reset advances this counter after rebuilding
+    // stock equipment and favourites, before queuing any memory-card write.
+    campaign_transition_ = read<unsigned>(global(campaign_generation)) == campaign_generation_ + 1u;
+    return campaign_transition_;
+}
+
 NativeArsenalSave::NativeArsenalSave(const openrac_api* api,openrac_mod* mod,NativeArsenal& arsenal)
     :Memory(api),arsenal_(arsenal),mod_(mod),card_root_(default_card_root(bindings().card_serial())){
     const auto args=arguments();
@@ -97,6 +133,9 @@ void NativeArsenalSave::begin_save(){
     if(pending_||operation>=3||queued>=0){captured_.reset();return;}
     arsenal_.commit();captured_=arsenal_.registry().snapshot();
 }
+void NativeArsenalSave::cancel_prepare() {
+    captured_.reset();
+}
 void NativeArsenalSave::after_prepare(){
     const auto& layout=bindings().memcard();
     const int operation=read<int>(native_state()+layout.operation),pending=read<int>(native_state()+layout.pending_operation);
@@ -134,8 +173,24 @@ void NativeArsenalSave::after_restore_data(unsigned descriptors){
     if(status!=arsenal::StoreStatus::Missing)report("load",status);
 }
 void NativeArsenalSave::reset_campaign(bool preserve_custom){
-    captured_.reset();pending_.reset();pending_path_.clear();
     if(preserve_custom){import_native_state();return;}
+    captured_.reset();pending_.reset();pending_path_.clear();
     const auto state=vanilla_snapshot();arsenal_.registry().restore(state);arsenal_.mark_snapshot_restored();
+}
+
+bool NativeArsenalSave::merge_new_game_plus() {
+    const auto previous = arsenal_.registry().snapshot();
+    auto next = vanilla_snapshot();
+    next.records = previous.records;
+    for (unsigned slot = 0; slot < next.quick.size(); ++slot) {
+        const auto key = previous.quick[slot];
+        if (!next.quick[slot] && arsenal_.registry().descriptor(key) && arsenal_.registry().owned(key)) {
+            next.quick[slot] = key;
+        }
+    }
+    if (!arsenal_.registry().restore(next)) return false;
+    arsenal_.mark_snapshot_restored();
+    if (captured_) captured_ = std::move(next);
+    return true;
 }
 }

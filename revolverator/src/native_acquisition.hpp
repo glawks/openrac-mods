@@ -53,13 +53,13 @@ private:
     Identity body_{};
     unsigned short body_flags_{};
     unsigned char lock_a_{},lock_b_{};
-    int previous_item_{};
+    int previous_item_{}, previous_selection_{}, previous_pending_hand_{};
     std::array<float,4> position_{},rotation_{},velocity_{};
-    std::array<int,7> equipment_{},pending_items_{};
     std::array<unsigned char,0x220> vendor_snapshot_{};
     bool supported()const;
     bool bindings_ready();
     bool same_level()const;
+    bool owns_scene()const;
     bool body_valid()const;
     bool snapshot_ready()const;
     bool quiet_player()const;

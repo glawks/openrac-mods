@@ -7,6 +7,25 @@
 #include <optional>
 
 namespace revolverator {
+// A native save sees only stock identities. Restore precisely the words this
+// view masked, unless the call owns a campaign transition and rebuilt them.
+class NativeSaveFields final : private Memory {
+public:
+    NativeSaveFields(const openrac_api* api, const arsenal::Registry& registry);
+    ~NativeSaveFields();
+    NativeSaveFields(const NativeSaveFields&) = delete;
+    NativeSaveFields& operator=(const NativeSaveFields&) = delete;
+    bool accept_campaign_transition();
+private:
+    struct Word { unsigned address{}; int original{}, masked{}; };
+    std::array<Word, 9> words_{};
+    unsigned count_{};
+    int level_{};
+    unsigned campaign_generation_{};
+    bool campaign_transition_{};
+    void mask(unsigned address, int original, int replacement);
+};
+
 class NativeArsenalSave final:public Memory {
 public:
     struct Paths { std::filesystem::path card_root; bool no_card=false; };
@@ -14,10 +33,12 @@ public:
     // Explicit card roots keep host tests and private sessions isolated.
     NativeArsenalSave(const openrac_api* api,openrac_mod* mod,NativeArsenal& arsenal,Paths paths);
     void begin_save();
+    void cancel_prepare();
     void after_prepare();
     void after_io();
     void after_restore_data(unsigned descriptors);
     void reset_campaign(bool preserve_custom);
+    bool merge_new_game_plus();
     void import_native_state();
 private:
     NativeArsenal& arsenal_;

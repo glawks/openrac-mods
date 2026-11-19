@@ -110,6 +110,76 @@ void pal_layout_decoys(){
         require(Fixture::ammo(f.load())==7,"absent or out-of-range card selection cannot attach a sidecar");
     }
 }
+void native_save_ownership(const char* version) {
+    Fixture f(version);
+    f.grant(7);
+    const auto favourites = f.region.data(0x141ea0);
+    const auto hand = f.region.data(0x141660);
+    const auto helmet = hand + 2 * sizeof(int);
+    const auto slot = [&](unsigned index) { return favourites + index * sizeof(int); };
+    const auto read = [&](unsigned address) {
+        int value;
+        std::memcpy(&value, f.ram.data() + address, sizeof(value));
+        return value;
+    };
+    f.put(favourites, std::array<int, 8>{18, 18, 11, 0, 0, 0, 0, 0});
+    f.put(helmet, 7);
+    {
+        NativeSaveFields native(&f.api, f.registry);
+        require(read(slot(0)) == 18 && read(slot(1)) == 0 && read(slot(2)) == 11,
+                "mask only the custom favourite, keeping stock Walloper and the other native entries");
+        require(read(hand) == 8 && read(helmet) == 7, "mask only custom hand selection, never helmet or pack equipment");
+        f.put(slot(2), 15);
+        f.put(helmet, 0);
+    }
+    require(read(slot(1)) == 18 && read(hand) == 18, "restore the view's own unchanged temporary words");
+    require(read(slot(2)) == 15 && read(helmet) == 0, "do not undo native updates outside the mask");
+    {
+        NativeSaveFields native(&f.api, f.registry);
+        f.put(slot(1), 11);
+        f.put(hand, 15);
+    }
+    require(read(slot(1)) == 11 && read(hand) == 15, "a changed temporary word is no longer ours to restore");
+
+    f.create_native();
+    NativeArsenalSave save(&f.api, nullptr, *f.arsenal, {f.root, false});
+    require(f.registry.assign_quick(0, 18) && f.registry.assign_quick(2, 11), "retain pre-reset logical quick slots");
+    f.put(favourites, std::array<int, 8>{18, 18, 11, 0, 0, 0, 0, 0});
+    f.put(hand, 18);
+    const auto campaign_generation = f.region.data(0x15ee20);
+    f.put(campaign_generation, 2u);
+    {
+        NativeSaveFields native(&f.api, f.registry);
+        require(!native.accept_campaign_transition(), "a skipped native callback does not advance the campaign");
+    }
+    require(read(slot(1)) == 18 && read(hand) == 18, "a skipped campaign transition restores the owned mask");
+    save.begin_save();
+    {
+        NativeSaveFields native(&f.api, f.registry);
+        require(read(slot(1)) == 0 && read(hand) == 8, "present stock-only input to the native campaign reset");
+        save.reset_campaign(true);
+        // Simulate the native NG+ filter after reinitialization: slot 2's old
+        // item is unavailable, and the game establishes its own hand and head.
+        f.put(slot(2), 0);
+        f.put(hand, 10);
+        f.put(helmet, 7);
+        f.put(campaign_generation, 3u);
+        require(native.accept_campaign_transition(), "accept the native campaign counter increment");
+        require(save.merge_new_game_plus(), "merge custom favourites after native campaign state exists");
+    }
+    require(read(slot(1)) == 0 && read(slot(2)) == 0 && read(hand) == 10 && read(helmet) == 7,
+            "release the campaign view without resurrecting old native quick or equipment state");
+    require(f.registry.quick()[0] == 18 && f.registry.quick()[1] == arsenal::RevolveratorKey && f.registry.quick()[2] == 0,
+            "retain owned custom favourite while honoring the game's removed native favourite");
+    require(f.registry.equipped() == 10, "retain the native campaign's hand selection");
+    f.state(15, -1, 0);
+    save.after_prepare();
+    f.state(0, -1, 0);
+    save.after_io();
+    const auto restored = f.load();
+    require(restored.quick == f.registry.quick() && Fixture::ammo(restored) == 7,
+            "NG+ sidecar contains the merged favourites and the existing custom ammo");
+}
 void ports_and_disabling(const char* version){
     Fixture f(version);f.create_native(1,4);f.grant(9);f.put<int>(f.region.data(0x13d290),1);f.put<int>(f.region.data(0x13d290)+0x14,4);
     NativeArsenalSave save(&f.api,nullptr,*f.arsenal,{f.root,false});save.begin_save();f.state(15,-1,0);save.after_prepare();f.state(0,-1,0);save.after_io();
@@ -123,4 +193,4 @@ void ports_and_disabling(const char* version){
     require(rejected,"an explicit empty card root is rejected");
 }
 }
-int main(){pal_layout_decoys();for(const char* version:{"ntsc","pal"}){regional_save_checks(version);ports_and_disabling(version);}std::printf("%u native arsenal save checks passed (PAL/NTSC paths, queued saves, load, NG+, stale data, two ports)\n",checks);}
+int main(){pal_layout_decoys();for(const char* version:{"ntsc","pal"}){regional_save_checks(version);native_save_ownership(version);ports_and_disabling(version);}std::printf("%u native arsenal save checks passed (PAL/NTSC paths, queued saves, load, NG+, stale data, two ports)\n",checks);}

@@ -13,13 +13,19 @@ that same hash.
 
 ## Hooks and assets
 
-On interface 1.12 and newer, NativeRuntimeHooks uses the official typed hook
-chain wherever the required hook is available. Two narrow fallbacks cover
-the vendor icon-strip draw and weapon-preview pose callbacks when their hooks
-are absent. The typed void() and void(u32) bridges resolve named game-function
+NativeRuntimeHooks uses the official typed hook chain for the vendor icon strip
+on interface 1.20 and newer. Earlier supported interfaces use a narrow bridge
+for that callback. The weapon-preview pose uses its own bridge. The typed
+void() and void(u32) bridges resolve named game-function
 exports and validate that they belong to executable pages of the main client
 image before activation. They use no fixed RVA or executable hash. The mod
 owns activation and rollback.
+
+The vendor icon strip delegates to the game when the list contains only stock
+items. Revolverator draws the strip when the list includes a Revolverator row.
+The manifest's required hook list still describes interface 1.12. On interface
+1.20 the loader may log a warning for the additional icon-strip hook. The
+runtime checks the interface before registering that hook.
 
 The public package does not need a separate compatibility-provider mod card.
 The original provider route is retained only for historical source compatibility.

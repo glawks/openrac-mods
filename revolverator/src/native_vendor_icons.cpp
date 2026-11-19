@@ -26,6 +26,7 @@ bool NativeVendorIcons::draw(){
        !valid(overlay_hud,0x2c)||!valid(resident_hud,0x2c))return false;
     const int count=read<int>(menu+0x210),selected=read<int>(menu+0x58);
     if(count<=0||count>16||selected<0||selected>=count)return false;
+    if (!vendor_.has_custom_rows()) return false;
     const int scroll=read<int>(menu+0x4c);
     // Retail moves by at most one slot (56px). Reject corrupt coordinates
     // before a signed subtraction or a native fixed-point draw can overflow.
