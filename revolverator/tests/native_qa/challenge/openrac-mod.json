@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "id": "challenge-mode-probe",
+  "name": "Native Challenge Mode Regression Probe",
+  "version": "0.1.0",
+  "api": "1.12",
+  "license": "GPL-3.0-or-later",
+  "games": {"rac1": ["pal"]},
+  "load": {"after": ["revolverator"]},
+  "hooks": ["rac1.save.new_game_plus"],
+  "settings": [
+    {"key": "candidate", "name": "Expect Revolverator", "type": "bool", "default": false}
+  ]
+}

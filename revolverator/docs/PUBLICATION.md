@@ -13,7 +13,7 @@ The release is prepared for the official [OpenRAC mod publication workflow](http
   Revolverator's item-grant hook is active.
 - Keep game files out of the ZIP and source archive; retain authored recipes,
   AI attribution, corresponding native source and third-party notices.
-- Publish a stable revolverator-v0.3.4 tag with the Windows ZIP, corresponding
+- Publish a stable versioned tag with the Windows ZIP, corresponding
   source, observed validation and SHA256SUMS.
 - Download every public asset and verify hashes, archive contents, required
   scripts and the exact native-validated DLL before announcing availability.

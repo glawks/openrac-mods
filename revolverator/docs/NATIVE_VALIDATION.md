@@ -1,5 +1,21 @@
 # Native validation
 
+## Version 0.3.5 SDK and save isolation
+
+The [release validation](https://github.com/noire342/openrac-mods/releases/download/revolverator-v0.3.5/revolverator-0.3.5-validation.json)
+identifies the exact installable DLLs. The [development receipt](validation/pal-sdk-hook-isolation.json)
+also records the original pre-release test runs. The Novalis Gadgetron
+opened through the native Triangle interaction on both interfaces. Interface
+1.12 used the local adapter. Interface 1.20 used the official hook and continued
+to the game's draw routine when the list contained only stock items.
+
+The [Challenge Mode probe](../tests/native_qa/challenge) loaded a generated PAL
+card and confirmed the native no-save option. The fresh campaign reached
+playable Veldin in the baseline and with Revolverator installed. Both runs
+preserved the same stock equipment behavior. Golden ownership, seven rounds,
+117 XP and the custom favourite carried over. The tested card files were
+unchanged, and all 39 Release host test groups passed.
+
 ## Version 0.3.4: item-grant fix
 
 The [0.3.4 release receipt](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.4)

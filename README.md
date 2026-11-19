@@ -60,7 +60,7 @@ the game's memory cards. Load it after other level-loading hooks, including XP,
 if managing `plugins.json` by hand. Full details and validation limits are in the
 module READMEs and [validation notes](docs/VALIDATION.md).
 
-## Install Rotatore / Revolverator 0.3.4
+## Install Rotatore / Revolverator 0.3.5
 
 1. Set up official OpenRAC on Windows x64 with **mod interface 1.12 or newer**
    with your own **PAL Europe v2.00 / SCES_509.16** data, the reference region.
@@ -96,14 +96,19 @@ Native item grants follow the game's own equipment rules. This update also
 adds charge-gated throws and an early ground drop with a native counterattack,
 preserves held Circle through pause and resume, and uses the original game sounds.
 
-For local import, choose `revolverator-0.3.4-windows-x86_64.zip` with **Mods → File**.
+Version 0.3.5 uses the official Gadgetron icon-strip hook on interface 1.20
+and compatible later versions, with an adapter for earlier supported clients.
+It scopes acquisition and save operations and preserves the Rotatore's Golden
+upgrade, ammo, XP and favourite through Challenge Mode.
+
+For local import, choose `revolverator-0.3.5-windows-x86_64.zip` with **Mods → File**.
 The installable weapon, complete corresponding source, native validation and
-checksums are available on the [0.3.4 release page](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.4).
+checksums are available on the [0.3.5 release page](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.5).
 See the [weapon README](revolverator/README.md) for installation and controls.
 
 | Component | Current source | Role |
 |---|---|---|
-| [Revolverator](revolverator/README.md) |0.3.4, PAL reference | Additional weapon, charge-gated release, Gold upgrade, native sounds, contact sparks and API v3 |
+| [Revolverator](revolverator/README.md) |0.3.5, PAL reference | Additional weapon, charge-gated release, Gold upgrade, native sounds, contact sparks and API v3 |
 | [Weapon Experience](weapon-xp/README.md) |0.6.4 | Optional API v4 progression companion with PAL HUD/camera corrections |
 | [Skill Points: RetroAchievements](skill-points-ra/README.md) |0.1.3 | Native menu, offline rules and read-only/event C API v1 |
 | [Cinematic Journeys](cinematic-journeys/README.md) |0.1.1 | Cutscene protection and configurable original flight animation |

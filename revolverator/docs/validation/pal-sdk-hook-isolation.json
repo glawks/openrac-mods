@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "scope": "Local Revolverator SDK and save isolation candidate on PAL Europe v2.00 (SCES-50916)",
+  "source_commit": "b4960148570b0b18e2d4d560fd1695b74f12a5d1",
+  "revolverator_sha256": "f249fea855b036d2d49e5ff4aef9b0a8688dfd7063d7220349f4f4829a3d9357",
+  "overlay_sha256": "200b0ef0271a531a2bd181160e63139adb3d44b39b5566a6d3b69959bdfa8395",
+  "host_release_tests": { "passed": 39, "failed": 0 },
+  "gadgetron": {
+    "setup": "Approach the placed Novalis vendor and open its menu through the native Triangle interaction.",
+    "frames_per_process": 1400,
+    "interface_1_12": {
+      "runtime_commit": "9fc860d5ce34b6524e928ca1b6ed2a94ff03e5f2",
+      "runtime_sha256": "5f7f6d73744a22923695150d99966f82bc41bb99ddb830757b427b68c23c9789",
+      "installer_sha256": "1fb570721e7c316898c2925f3867ac364f5971bea7c83fde175e6cdce54c6732",
+      "probe_sha256": "179f824ba109ad12318bcd83c3219e004952ce75f883b4515d7d2529a7ea62d6",
+      "fallback_bridge_observed": true,
+      "official_icon_strip_hook_bound": false,
+      "stock": { "ready_frames": 172, "exit_code": 0 },
+      "custom_ammunition": { "ready_frames": 172, "exit_code": 0 },
+      "observations": "The probe checks menu rows and bridge activation."
+    },
+    "interface_1_20": {
+      "runtime_commit": "2c13100869bf45dbbdc7772f874c84152b8d1c91",
+      "runtime_sha256": "dcf3424ad863fa522739a74476bba276b4af3f8a6e8755bda034c0fcd2d7f283",
+      "probe_sha256": "e034a3984006e978f527b57490c82fa41a36d90e7f0fbdef5e2912131f213ade",
+      "official_icon_strip_hook_bound": true,
+      "stock": { "ready_frames": 172, "native_strip_calls": 171, "exit_code": 0 },
+      "custom_ammunition": { "ready_frames": 172, "native_strip_calls": 0, "exit_code": 0 },
+      "observations": "The official hook chain continued for stock rows. The custom row displayed the drill AMMO icon alongside the two stock icons."
+    }
+  },
+  "challenge_mode": {
+    "probe": "tests/native_qa/challenge",
+    "probe_sha256": "475a3ba092577caf05bd29a396c30b58776b84bd60cd9731da9e2b3b20ee834a",
+    "runtime_interface": "1.20",
+    "native_card_seed_sha256": "4aa7c64c6ae469b52de395f116f45f3f8f3db43256f8f90fd7ac6ca85d9144b3",
+    "arsenal_card_seed_sha256": "d155329cda48771a220bec4dbb00537ddc86762de2ff8ee50eeaad74f130f11c",
+    "setup": "Load an isolated copy of the generated Golden QA memory card. Open the native Challenge Mode confirmation directly and accept its no-save option.",
+    "native_challenge_slot": -1,
+    "campaign_generation": [1, 2],
+    "frames_per_process": 2100,
+    "playable_veldin_frames_per_process": 120,
+    "cards_unchanged": true,
+    "stock_held_on_veldin": 8,
+    "stock_favourite_retained": 10,
+    "hoverboard_removed": 30,
+    "baseline": { "checks_passed": 10, "exit_code": 0 },
+    "revolverator": {
+      "checks_passed": 11,
+      "exit_code": 0,
+      "owned": true,
+      "golden": true,
+      "ammunition": 7,
+      "xp": 117,
+      "logical_favourite_key": 65554,
+      "projected_favourite": 18
+    }
+  }
+}
