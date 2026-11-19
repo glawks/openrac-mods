@@ -1,18 +1,20 @@
 # Changelog
 
-## Rotatore / Revolverator 0.3.4 — development source, 2026-11-06
+## Rotatore / Revolverator 0.3.4 — 2026-11-19
 
+- Fix the crash when collecting the Pilot's Helmet on Gaspar. Leave native
+  grants under the game's equipment rules and limit the mod's manual hand
+  equip request to grants of Revolverator.
 - Require the displayed charge bar to be full before a manual throw. Early
   release puts the live enemy on the ground in front of Ratchet, restoring
   native AI, collision and a nearby counterattack without a projectile or blast.
 - Preserve Circle's physical state across pause/resume, so pausing while
   holding an enemy cannot manufacture a release.
 - Keep original game sounds. Preserve the procedural audio experiment in
-  source only; the installable local candidate contains no custom WAVs.
+  source only. The installable package uses the game's sound bank.
 - Retain the Golden charged explosion, automatic maximum-spin throw, native
   contact sparks and independent weapon saves.
-- Record 38 passing Release host groups and 81 targeted native PAL Base/Golden
-  checks against the local candidate. Public installable release remains 0.3.3.
+- Add regression coverage for native item grants with Revolverator active.
 - Document the official submission form requested by the catalog maintainer.
 
 ## Rotatore / Revolverator 0.3.2 — 2026-11-02

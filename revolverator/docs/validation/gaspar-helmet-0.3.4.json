@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "pass": true,
+  "scope": "Actual Pilot's Helmet pickup on Gaspar (level 9) with the placed class 1290 actor, its native cutscene and its Item_Give(7, 1) call. Each run used a fresh profile without a memory card.",
+  "region": "PAL Europe v2.00 (SCES-50916)",
+  "runtime": {
+    "version": "1.0.2",
+    "commit": "2c131008",
+    "sha256": "dcf3424ad863fa522739a74476bba276b4af3f8a6e8755bda034c0fcd2d7f283"
+  },
+  "probe": {
+    "source": "tests/native_qa/gaspar",
+    "sha256": "2dbff47f7237c091566253a6ec162d3986940b79018ecc164190c09da8c70277",
+    "setup": "Place Ratchet within reach of the original helmet. Observe the native grant and track playable frames afterwards.",
+    "pending_slot_order": ["hand", "body", "head"]
+  },
+  "cases": {
+    "without_revolverator": {
+      "exit_code": 0,
+      "total_frames": 2100,
+      "grant_calls": 1,
+      "helmet_owned_before": false,
+      "helmet_owned_after": true,
+      "pending_slots_before": [0, 0, 0],
+      "pending_slots_after": [0, 0, 7],
+      "hand_item_before": 8,
+      "hand_item_after": 8,
+      "head_item_after": 7,
+      "playable_frames_after_grant_checked": 120
+    },
+    "published_0.3.3": {
+      "revolverator_sha256": "9c4ccccbb3d4b8bbdb6075a6e98f6f09a83fe6c73f5d53856e019e3bab601d88",
+      "overlay_sha256": "8a69d4411696c76e6ea7229ad66999bbddd107bac76a7338771acd67a20b14c4",
+      "exit_code": 3,
+      "grant_calls_observed": 1,
+      "helmet_owned_before": false,
+      "helmet_owned_after": true,
+      "pending_slots_before": [0, 0, 0],
+      "pending_slots_after": [7, 0, 7],
+      "result": "Unmapped game-memory read after the helmet was queued in both the hand and head slots."
+    },
+    "fixed_0.3.4": {
+      "revolverator_sha256": "25dee19e86ebf394a8594645a33c20314df51f7e86a88a2e7cdabb007da2d643",
+      "overlay_sha256": "c54b85fcf0e58357b2b2b980451b9c951dea56129b5036fcbeea88942c2db03b",
+      "exit_code": 0,
+      "total_frames": 2100,
+      "grant_calls": 1,
+      "helmet_owned_before": false,
+      "helmet_owned_after": true,
+      "pending_slots_before": [0, 0, 0],
+      "pending_slots_after": [0, 0, 7],
+      "hand_item_before": 18,
+      "hand_item_after": 18,
+      "head_item_after": 7,
+      "revolverator_starting_unlock_observed": true,
+      "revolverator_render_class_before_pickup": 2017,
+      "playable_frames_after_grant_checked": 120
+    }
+  }
+}

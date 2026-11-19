@@ -60,7 +60,7 @@ the game's memory cards. Load it after other level-loading hooks, including XP,
 if managing `plugins.json` by hand. Full details and validation limits are in the
 module READMEs and [validation notes](docs/VALIDATION.md).
 
-## Install Rotatore / Revolverator 0.3.3
+## Install Rotatore / Revolverator 0.3.4
 
 1. Set up official OpenRAC on Windows x64 with **mod interface 1.12 or newer**
    with your own **PAL Europe v2.00 / SCES_509.16** data, the reference region.
@@ -91,22 +91,19 @@ spins. Compatible future OpenRAC minor interfaces are accepted when the required
 capabilities remain available; no exact client version or executable hash is
 required by the modern installation path.
 
-For local import, choose `revolverator-0.3.3-windows-x86_64.zip` with **Mods → File**.
-The [0.3.3 release](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.3)
-includes the installable weapon, complete corresponding source, native validation
-and checksums. Other mods retain their own releases and region requirements.
-See the [weapon README](revolverator/README.md) for the current installation path.
+Version 0.3.4 fixes the crash when collecting the Pilot's Helmet on Gaspar.
+Native item grants follow the game's own equipment rules. This update also
+adds charge-gated throws and an early ground drop with a native counterattack,
+preserves held Circle through pause and resume, and uses the original game sounds.
 
-The 0.3.4 development source adds charge-gated throws and an early ground drop
-that restores the enemy's native counterattack. It keeps the original game
-sounds and fixes held Circle input across pause/resume. The local Windows PAL
-candidate passed 38 host test groups and 81 targeted native checks; the
-[receipt](revolverator/docs/validation/native-audio-0.3.4.json) records its exact
-binary and scope. The installable public release remains 0.3.3.
+For local import, choose `revolverator-0.3.4-windows-x86_64.zip` with **Mods → File**.
+The installable weapon, complete corresponding source, native validation and
+checksums are available on the [0.3.4 release page](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.4).
+See the [weapon README](revolverator/README.md) for installation and controls.
 
 | Component | Current source | Role |
 |---|---|---|
-| [Revolverator](revolverator/README.md) |0.3.4 development, PAL reference | Additional weapon, charge-gated release, Gold upgrade, native sounds, contact sparks and API v3 |
+| [Revolverator](revolverator/README.md) |0.3.4, PAL reference | Additional weapon, charge-gated release, Gold upgrade, native sounds, contact sparks and API v3 |
 | [Weapon Experience](weapon-xp/README.md) |0.6.4 | Optional API v4 progression companion with PAL HUD/camera corrections |
 | [Skill Points: RetroAchievements](skill-points-ra/README.md) |0.1.3 | Native menu, offline rules and read-only/event C API v1 |
 | [Cinematic Journeys](cinematic-journeys/README.md) |0.1.1 | Cutscene protection and configurable original flight animation |
@@ -131,7 +128,7 @@ SHA256 `e720a59d130b4b2289a4eb15cad3e33f739a72a385992db171ef43490205fb0e`.
 The corresponding NTSC-U 0.10 client is also recognized through an explicit
 region profile. Unknown/mismatched builds fail clearly. The plugin reads source
 manifests and mounts owned temporary copies while the extraction and client
-remain unchanged. Revolverator 0.3.3 instead uses its [minimum-interface and capability requirements](revolverator/docs/COMPATIBILITY.md).
+remain unchanged. Revolverator uses its [minimum-interface and capability requirements](revolverator/docs/COMPATIBILITY.md).
 See [historical PAL scope](revolverator/docs/PAL.md) and
 [XP PAL evidence](weapon-xp/docs/PAL.md) for tested scenarios and limitations.
 
@@ -143,7 +140,7 @@ See [historical PAL scope](revolverator/docs/PAL.md) and
 This is a preview. Native proof is scoped to its exact binaries and scenarios;
 other native platforms, complete campaigns and all mod combinations are not certified.
 The original drill geometry is read from the player's extraction. The authored
-ammunition recipe retains its explicit AI/art provenance. Version 0.3.3 derives
+ammunition recipe retains its explicit AI/art provenance. Revolverator derives
 the Golden finish locally and ships no game atlas. The [old engine patch](docs/arsenal-bridge/README.md) is historical.
 
 Implementation code is [GPL-3.0-or-later](LICENSE), Copyright (c) 2026 lorenzogarrone.

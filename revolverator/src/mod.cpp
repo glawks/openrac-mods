@@ -326,35 +326,18 @@ void vendor_icon_strip(){
  if(!session||!session->vendor_icons.draw())vendor_icons_original();
 }
 void give(int item,int equip){
- if(!session||!session->arsenal.ready()||item<0||item>int(arsenal::Registry::MaximumNativeKey)){
+ if(!session||!session->arsenal.ready()||session->world.level_transitioning()){
   give_original(item,equip);return;
  }
  auto& s=*session;auto& w=s.world;
- const bool custom=item==18&&(s.grant_override==arsenal::RevolveratorKey||
+ const bool carrier=item==int(arsenal::NativeWalloperKey);
+ const bool custom=carrier&&(s.grant_override==arsenal::RevolveratorKey||
   (w.read<int>(w.mode())==5&&s.vendor.selected_custom()));
- const auto key=custom?arsenal::RevolveratorKey:unsigned(item);
- const auto before=w.read<std::array<int,8>>(w.global(0x141ea0));
- const auto stock=w.read<std::array<unsigned char,12>>(w.global(0x15edd0));
- s.arsenal.project(key);give_original(item,equip);s.arsenal.commit();
- if(custom){
-  const auto after=w.read<std::array<unsigned char,12>>(w.global(0x15edd0));
-  for(unsigned i=0;i<after.size();++i)if(after[i]!=stock[i]&&(after[i]&0x3f)==18)
-   w.write<unsigned char>(w.global(0x15edd0)+i,stock[i]);
+ s.arsenal.give_item(item,equip,custom,give_original);
+ if(carrier){
+  s.restore_context();
+  w.set_active(s.arsenal.revolverator_active());
  }
- const auto after=w.read<std::array<int,8>>(w.global(0x141ea0));
- for(unsigned i=0;i<after.size();++i)if(after[i]!=before[i]){
-  if(after[i]==item)s.registry.assign_quick(i,key);
-  else if(after[i]>=0&&after[i]<=int(arsenal::Registry::MaximumNativeKey))s.registry.assign_quick(i,unsigned(after[i]));
- }
- if(custom&&s.registry.owned(key)&&std::find(s.registry.quick().begin(),s.registry.quick().end(),key)==s.registry.quick().end()){
-  const auto empty=std::find(s.registry.quick().begin(),s.registry.quick().end(),0u);
-  if(empty!=s.registry.quick().end())s.registry.assign_quick(unsigned(empty-s.registry.quick().begin()),key);
- }
- if(equip&&s.registry.equip(key)){
-  // Native Give only updates pending equipment on the first purchase.
-  w.write<int>(w.hero()+0x20b8,item);
- }
- s.arsenal.project_quick_slots();s.restore_context();w.set_active(s.arsenal.revolverator_active());
 }
 int choose_ammo(unsigned moby,unsigned out){
  if(!session||!session->arsenal.ready()||!session->registry.owned(arsenal::RevolveratorKey))return choose_original(moby,out);
@@ -537,7 +520,8 @@ int get_quick(revolverator_quick_v2* out){
  std::copy(session->registry.quick().begin(),session->registry.quick().end(),result.keys);*out=result;return 1;
 }
 int grant(unsigned key,int equip){
- if(!session||!session->arsenal.ready()||key!=arsenal::RevolveratorKey||!give_original)return 0;
+ if(!session||!session->arsenal.ready()||session->world.level_transitioning()||
+    key!=arsenal::RevolveratorKey||!give_original)return 0;
  auto& s=*session;const auto previous=s.grant_override;s.grant_override=key;
  give(18,equip!=0);s.grant_override=previous;
  return s.registry.owned(key)?1:0;

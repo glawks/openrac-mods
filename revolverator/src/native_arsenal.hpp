@@ -43,6 +43,8 @@ public:
     void mark_snapshot_restored();
     void project_quick_slots(bool native_save=false);
     void observe_equipped();
+    using GiveItem = void(*)(int item, int equip);
+    void give_item(int item, int equip, bool revolverator, GiveItem original);
     void set_foreign_view(ForeignArsenalView*);
     // Host teardown fallback only: never retain a destroyed C++ viewport.
     // A failed producer withdrawal remains module-pinned by its owner.

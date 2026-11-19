@@ -8,7 +8,9 @@ The release is prepared for the official [OpenRAC mod publication workflow](http
 - Declare minimum mod interface 1.12, supported regions/platforms and real
   dependencies. Do not pin compatibility to one client release number.
 - Build, run host checks and validate the exact installable package in the
-  official client, including first-start asset derivation and contact sparks.
+  official client. Check first-start asset derivation, contact sparks and the
+  Gaspar Pilot's Helmet pickup, which exercises a native acquisition while
+  Revolverator's item-grant hook is active.
 - Keep game files out of the ZIP and source archive; retain authored recipes,
   AI attribution, corresponding native source and third-party notices.
 - Publish a stable revolverator-v0.3.4 tag with the Windows ZIP, corresponding
@@ -22,8 +24,7 @@ The maintainer closed [listing PR #71](https://github.com/OpenRAC/openrac-mods/p
 on 6 November 2026 and requested the official submission form. Submit the stable
 revolverator id once; the bot checks the submission and opens the listing PR for
 maintainer review. Once that PR is merged, later releases use the same
-repository/path and still need the external-native review gate. The public
-0.3.3 release stays unchanged while the local 0.3.4 update is tested.
+repository/path and still need the external-native review gate.
 
 ### First listing procedure
 

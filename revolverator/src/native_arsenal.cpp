@@ -9,6 +9,7 @@ namespace {
 constexpr unsigned item=18;
 constexpr unsigned owned=0x13d4c0,acquired=0x13d4e8;
 constexpr unsigned ammo=0x13d428,variant=0x13e520,favourites=0x141ea0;
+constexpr unsigned vendor_stock=0x15edd0,hero_address=0x13f350,pending_hand=0x20b8;
 std::size_t field_width(std::size_t size,std::size_t at){
     // Keep native scalar ownership indivisible. Restoring separate changed
     // bytes of a price or class ID could splice two owners' values together.
@@ -169,6 +170,76 @@ bool NativeArsenal::request_equipped(){
     const auto hero=global(0x13f350),selected=global(0x141660);
     if(!native||native>arsenal::Registry::MaximumNativeKey||!valid(hero,0x20bc)||!valid(selected,4))return false;
     write<int>(selected,int(native));write<int>(hero+0x20b8,int(native));return true;
+}
+void NativeArsenal::give_item(int native_item, int equip, bool custom_grant, GiveItem original) {
+    if (!ready_ || level_ != api_->loaded_level()) {
+        original(native_item, equip);
+        return;
+    }
+
+    const auto quick_address = global(favourites);
+    const int grant_level = level_;
+    using Quick = std::array<int, 8>;
+    const auto quick_before = read<Quick>(quick_address);
+    const bool carrier = native_item == int(arsenal::NativeWalloperKey);
+    const bool revolverator = carrier && custom_grant;
+    using Stock = std::array<unsigned char, 12>;
+    unsigned stock_address = 0;
+    Stock stock_before{};
+    bool first_native_walloper = false;
+    if (carrier) {
+        project(revolverator ? arsenal::RevolveratorKey : arsenal::NativeWalloperKey);
+        if (revolverator) {
+            stock_address = global(vendor_stock);
+            stock_before = read<Stock>(stock_address);
+        } else {
+            first_native_walloper = !native_walloper().owned;
+        }
+    }
+
+    original(native_item, equip);
+    if (!ready_ || level_ != grant_level || api_->loaded_level() != grant_level) return;
+
+    if (carrier) commit();
+    const auto quick_after = read<Quick>(quick_address);
+    for (std::size_t slot = 0; slot < quick_after.size(); ++slot) {
+        const int value = quick_after[slot];
+        if (value == quick_before[slot] || value < 0 ||
+            value > int(arsenal::Registry::MaximumNativeKey)) continue;
+        const auto key = revolverator && value == native_item
+            ? arsenal::RevolveratorKey : arsenal::WeaponKey(value);
+        registry_.assign_quick(slot, key);
+    }
+
+    if (!carrier) return;
+    const auto hero = global(hero_address);
+    if (!revolverator) {
+        // Observe the native first-acquisition hand request. The engine owns
+        // every native equipment slot and decides whether a grant equips it.
+        if (first_native_walloper && equip && valid(hero, pending_hand + sizeof(int)) &&
+            read<int>(hero + pending_hand) == native_item) {
+            registry_.equip(arsenal::NativeWalloperKey);
+        }
+        return;
+    }
+
+    const auto stock_after = read<Stock>(stock_address);
+    for (std::size_t slot = 0; slot < stock_after.size(); ++slot) {
+        if (stock_after[slot] != stock_before[slot] && (stock_after[slot] & 0x3f) == item) {
+            write<unsigned char>(stock_address + unsigned(slot), stock_before[slot]);
+        }
+    }
+    const auto& quick = registry_.quick();
+    if (registry_.owned(arsenal::RevolveratorKey) &&
+        std::find(quick.begin(), quick.end(), arsenal::RevolveratorKey) == quick.end()) {
+        const auto empty = std::find(quick.begin(), quick.end(), 0u);
+        if (empty != quick.end()) registry_.assign_quick(std::size_t(empty - quick.begin()), arsenal::RevolveratorKey);
+    }
+    // Explicit custom re-equip may reuse an already-owned native carrier.
+    if (equip && valid(hero, pending_hand + sizeof(int)) && registry_.equip(arsenal::RevolveratorKey)) {
+        write<int>(hero + pending_hand, native_item);
+    }
+    project_quick_slots();
 }
 bool NativeArsenal::native_inventory(arsenal::WeaponKey key,arsenal_inventory_state_v1& state)const{
     return foreign_&&key!=item&&foreign_->native_inventory(key,state);

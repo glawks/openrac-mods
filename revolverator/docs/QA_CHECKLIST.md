@@ -29,6 +29,12 @@ results are indexed in [NATIVE_VALIDATION.md](NATIVE_VALIDATION.md).
 
 ## Gameplay and persistence
 
+- Collect the placed Pilot's Helmet on Gaspar with Revolverator enabled.
+  Confirm helmet ownership and native head equipment after the pickup,
+  preserved weapon selection, and continued playable frames.
+- Cover regular weapons, gadgets and wearable equipment at the grant
+  boundary with auto-equip enabled and disabled. Check native quick-select
+  updates and ensure only Revolverator can request its own manual hand switch.
 - Test tap versus minimum uninterrupted hold, capture, spin, throw, impact and
   rapid reuse. Verify one round per activation and capacity 20.
 - Test Hoven purchase, normal ammo pickup/refill and the Novalis Golden purchase.

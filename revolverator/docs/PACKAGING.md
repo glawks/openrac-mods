@@ -3,9 +3,8 @@
 The Windows archive is revolverator-0.3.4-windows-x86_64.zip with
 openrac-mod.json at its root. The manifest names author **lorenzogarrone**,
 version 0.3.4, GPL-3.0-or-later and minimum mod interface 1.12. The release
-tag is revolverator-v0.3.4. This update remains unpublished until its final
-native validation gates pass; version 0.3.3 and its receipts remain
-unchanged.
+tag is revolverator-v0.3.4. Its release receipt identifies the exact binaries
+and reports the native item-grant regression coverage.
 
 ## Installable files
 

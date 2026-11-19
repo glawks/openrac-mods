@@ -13,6 +13,7 @@ constexpr unsigned owned=0x13d4c0,unlocked=0x13d408,acquired=0x13d4e8,ammo=0x13d
 constexpr unsigned definitions=0x1863d0,overlay_definitions=0x179ac0,prices=0x1c40b0,vendor_slots=0x1c8ff0;
 constexpr unsigned favourites=0x141ea0,hero=0x13f350,mode=0x15f5c4;
 constexpr unsigned item=18;
+constexpr unsigned pending_hand=0x20b8, pending_head=0x20c0, pending_pack=0x20c4;
 int checks;
 void require(bool pass,const char* reason){++checks;if(!pass){std::fprintf(stderr,"native arsenal: %s\n",reason);std::exit(1);}}
 struct View final:ArsenalIdentityView {bool custom=false;unsigned calls=0;void select_identity(bool value)override{custom=value;++calls;}};
@@ -63,8 +64,83 @@ struct Fixture {
                 get<unsigned short>(address(prices,24)+14)==10&&get<unsigned short>(address(definitions,76)+0x38)==60037,why);
     }
 };
+
+int grant_calls, grant_id, grant_equip, native_slot;
+void original_grant(int id, int equip) {
+    ++grant_calls;
+    grant_id = id;
+    grant_equip = equip;
+    auto& f = *live;
+    if (f.get<unsigned char>(owned + id)) return;
+    f.put<unsigned char>(owned + id, 1);
+    if (equip && native_slot >= 0) f.put<int>(hero + unsigned(native_slot), id);
+    if (native_slot != int(pending_hand)) return;
+    auto slots = f.get<std::array<int, 8>>(favourites);
+    for (auto& slot : slots) {
+        if (slot != 0) continue;
+        slot = id;
+        break;
+    }
+    f.put(favourites, slots);
+}
+
+void check_item_grants() {
+    Fixture f;
+    f.seed(false);
+    NativeArsenal arsenal(&f.api, f.registry, f.view);
+    f.initialize(arsenal);
+    require(f.registry.set_state(RevolveratorKey, {true, 6, 39}) &&
+            f.registry.equip(RevolveratorKey) && f.registry.assign_quick(0, RevolveratorKey),
+            "fixture starts with an owned, equipped and bound Revolverator");
+    arsenal.restore_gameplay();
+    arsenal.project_quick_slots();
+    const auto revision = f.registry.revision();
+    for (int id = 0; id <= int(Registry::MaximumNativeKey); ++id) {
+        if (id == int(NativeWalloperKey)) continue;
+        // Exercise non-hand grants, including slot-2 Pilot's Helmet on Gaspar.
+        native_slot = id == 7 ? int(pending_head) : id == 2 ? int(pending_pack) : -1;
+        const int queued_hand = 15;
+        f.put<int>(hero + pending_hand, queued_hand);
+        f.put<int>(hero + pending_head, -1);
+        f.put<int>(hero + pending_pack, -1);
+        grant_calls = 0;
+        arsenal.give_item(id, 1, false, original_grant);
+        require(grant_calls == 1 && grant_id == id && grant_equip == 1, "native grant is forwarded once with original arguments");
+        require(f.get<int>(hero + pending_hand) == queued_hand &&
+                f.get<int>(hero + pending_head) == (id == 7 ? 7 : -1) &&
+                f.get<int>(hero + pending_pack) == (id == 2 ? 2 : -1),
+                "non-hand grants preserve the pending hand and every native equipment slot");
+        require(f.registry.revision() == revision && f.registry.equipped() == RevolveratorKey &&
+                f.view.custom && f.get<unsigned char>(owned + id) == 1,
+                "unrelated acquisition leaves the projected weapon and logical inventory alone");
+    }
+
+    native_slot = pending_hand;
+    f.put<unsigned char>(owned + 15, 0);
+    arsenal.give_item(15, 1, false, original_grant);
+    require(f.get<int>(hero + pending_hand) == 15 && f.registry.quick()[3] == 15 &&
+            f.registry.quick()[0] == RevolveratorKey,
+            "native hand acquisition queues itself and inserts its own favourite");
+    f.put<int>(hero + pending_hand, 11);
+    arsenal.give_item(15, 1, false, original_grant);
+    require(f.get<int>(hero + pending_hand) == 11, "an owned native weapon grant leaves an existing hand request alone");
+
+    arsenal.give_item(18, 1, false, original_grant);
+    arsenal.restore_gameplay();
+    require(f.registry.walloper().owned && f.registry.equipped() == NativeWalloperKey &&
+            f.registry.quick()[4] == NativeWalloperKey && f.registry.state(RevolveratorKey)->ammo == 6,
+            "native Walloper grant keeps its ownership, selection and favourite independent");
+    f.put<int>(hero + pending_hand, 15);
+    arsenal.give_item(18, 1, false, original_grant);
+    require(f.get<int>(hero + pending_hand) == 15, "an owned Walloper grant follows native regrant semantics");
+    arsenal.give_item(18, 1, true, original_grant);
+    require(f.get<int>(hero + pending_hand) == 18 && f.registry.equipped() == RevolveratorKey &&
+            f.registry.state(RevolveratorKey)->ammo == 6 && f.registry.state(RevolveratorKey)->xp == 39,
+            "an explicit Rotatore regrant equips the custom weapon and preserves ammo and XP");
+}
 }
 int main(){
+    check_item_grants();
     {Fixture f;NativeArsenal arsenal(&f.api,f.registry,f.view);f.initialize(arsenal);
      require(arsenal.ready()&&arsenal.projected()==18&&!f.view.custom,"unowned custom weapon leaves native presentation active after initialization");
      require(f.registry.walloper().owned&&f.registry.walloper().ammo==0&&f.registry.walloper().unlocked==0&&f.registry.walloper().acquired==2&&f.registry.walloper().text_variant==5,

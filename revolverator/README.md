@@ -1,4 +1,4 @@
-# Revolverator 0.3.4 (development)
+# Revolverator 0.3.4
 
 By **lorenzogarrone**. The Italian in-game name is **Rotatore**.
 
@@ -7,15 +7,13 @@ catch, spin and throw enemies. It uses the game's weapon menus, ammunition
 HUD, acquisition presentation and save flow. The original Walloper remains a
 separate weapon.
 
-Version 0.3.4 adds charge-gated throws and a deliberate early ground drop.
-The development runtime keeps the original game sounds; the custom
-sound experiment is parked in source only. The published
-[0.3.3 release](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.3)
-remains available. The local 0.3.4 candidate passed 38 Release host test groups
-and 81 targeted native PAL checks across the base and Golden variants. The
-[native validation receipt](docs/validation/native-audio-0.3.4.json) identifies
-that exact binary and its tested scenarios. These source changes do not publish
-a new installable release.
+Version 0.3.4 fixes the crash when collecting the Pilot's Helmet on Gaspar.
+The game handles original item grants and their equipment slots. The mod uses
+its custom hand-item selection only when granting Revolverator.
+
+This update also adds charge-gated throws and an early ground drop. The runtime
+uses the original game sounds. The [release page](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.4)
+includes the Windows package, corresponding source and validation receipt.
 
 Native metal sparks follow the drill's contact with a spinning enemy. Their
 rate follows the rotation speed. The weapon's models are prepared
@@ -27,8 +25,8 @@ contains no copied game models, textures or HUD artwork.
 1. Use the official OpenRAC launcher on Windows x64, with **mod interface 1.12
    or newer** and your own extracted PAL or NTSC-U copy of Ratchet & Clank.
 2. In **Mods**, add [this repository](https://github.com/noire342/openrac-mods),
-   choose **Revolverator**, and install it. Alternatively, import
-   revolverator-0.3.4-windows-x86_64.zip with **File** when this update is released.
+   choose **Revolverator**, and install or update it to 0.3.4. Alternatively,
+   import `revolverator-0.3.4-windows-x86_64.zip` with **File**.
 3. Enable the mod and start the game. The first start prepares its local
    graphics cache automatically. No separate Python installation, graphics
    pack, utility mod card or replacement client is required.

@@ -1,17 +1,21 @@
 # Native validation
 
-## Version 0.3.4: local native-sound rollback accepted
+## Version 0.3.4: item-grant fix
 
-This source adds charge-gated release and a deliberate ground drop. The current
-runtime restores the original game sounds; the custom sound experiment remains
-source only. The [native-only receipt](validation/native-audio-0.3.4.json) records
+The [0.3.4 release receipt](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.4)
+identifies the exact Windows DLL and the scope of the Gaspar Pilot's Helmet
+regression. It accompanies the runtime and corresponding source archives.
+
+### Earlier 0.3.4 charge-release candidate
+
+The [native-only receipt](validation/native-audio-0.3.4.json) records
 81 passing PAL checks across Base and Golden scenarios and 38 passing Release
 host test groups, against DLL 3282185c…8fcaa63. Both native processes exited
 normally, and all 131 original inputs stayed unchanged in each run. Native
 early-drop/counterattack, pause/resume and charged/automatic throws passed.
 There were no custom sound events or runtime WAVs; the native stereo mixes
-contained nonzero audio. This is targeted local evidence, not a published
-release, subjective listening review or whole-campaign certification.
+contained nonzero audio. These observations apply to that candidate's binary
+and the recorded Novalis scenarios.
 The earlier [custom-audio candidate receipt](validation/charge-release-0.3.4.json)
 is historical and certifies only its own binary.
 
@@ -31,7 +35,7 @@ publication checks are recorded separately from the receipts below. See
 [contact sparks](CONTACT_SPARKS.md), [runtime assets](RUNTIME_ASSETS.md) and
 [compatibility](COMPATIBILITY.md).
 
-The current binary's authoritative [release validation](https://github.com/noire342/openrac-mods/releases/download/revolverator-v0.3.3/revolverator-0.3.3-validation.json)
+The 0.3.3 binary's authoritative [release validation](https://github.com/noire342/openrac-mods/releases/download/revolverator-v0.3.3/revolverator-0.3.3-validation.json)
 is attached to the release and embedded as RELEASE-VALIDATION.json in both
 archives. It includes final native evidence and its source/binary pins.
 The [metadata-only query receipt](validation/version-metadata-0.3.3.json)

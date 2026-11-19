@@ -1,0 +1,11 @@
+{
+  "format": 2,
+  "id": "gaspar-helmet-probe",
+  "name": "Native Gaspar Helmet Regression Probe",
+  "version": "0.1.0",
+  "api": "1.12",
+  "license": "GPL-3.0-or-later",
+  "games": {"rac1": ["pal", "ntsc"]},
+  "load": {"after": ["revolverator"]},
+  "hooks": ["rac1.item.give"]
+}
