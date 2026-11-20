@@ -679,6 +679,29 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         const Report r = read_pad();
         CHECK(r.held(kbm::kCross));
         CHECK(r.bytes[5] < 0x80);
+
+        // Front end: confirm must be Cross alone, not Cross + Start,
+        // which caused the RAC2 main menu to go back.
+        g_host->phase = OPENRAC_PLAY_FRONT_END;
+        tick();
+        press(40);  // USB HID Enter
+        const Report enter = read_pad();
+        CHECK(enter.held(kbm::kCross));
+        CHECK(!enter.held(kbm::kStart));
+        CHECK(!enter.held(kbm::kTriangle));
+
+        tick();
+        press(44);  // USB HID Space
+        const Report space = read_pad();
+        CHECK(space.held(kbm::kCross));
+        CHECK(!space.held(kbm::kStart));
+        CHECK(!space.held(kbm::kTriangle));
+
+        tick();
+        press(42);  // USB HID Backspace
+        const Report back = read_pad();
+        CHECK(back.held(kbm::kTriangle));
+        CHECK(!back.held(kbm::kCross));
     }
 
     // An unsupported third game is refused; restore the RAC1 mock for other tests.
