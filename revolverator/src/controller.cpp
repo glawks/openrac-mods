@@ -166,6 +166,7 @@ void Controller::tick(const Frame& f){
   // uninterrupted minimum hold after the gesture has actually started.
   if(!f.primary){recover();break;}
   if(timer_>=std::max(settings_.windup,settings_.minimum_hold)){
+   if(world_.try_capture_gag(f)){recover();break;}
    const auto found=world_.find_target(f.position,f.yaw,settings_.reach);
    if(found&&!flying(*found)&&world_.valid(*found)&&world_.capture(*found)){
     target_=*found;phase_=Phase::Spinning;spin_time_=timer_=0;angle_=f.yaw;

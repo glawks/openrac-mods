@@ -11,6 +11,7 @@
 #include "release_recoil.hpp"
 #include "native_contact_sparks.hpp"
 #include "native_crates.hpp"
+#include "native_capture_gag.hpp"
 #include "weapon_audio.hpp"
 #include <array>
 namespace revolverator {
@@ -20,6 +21,7 @@ public:
  ~NativeWorld()override;
  bool attack_input_ready()const override;
  bool begin_attack()override{return ammunition_.begin_attack();}
+ bool try_capture_gag(const Frame&)override;
  std::optional<Target> find_target(Vec3 origin,float yaw,float reach)override;
  bool valid(Target target)const override;
  bool capture(Target target)override;
@@ -45,6 +47,10 @@ public:
  void set_audio(WeaponAudioSink* audio){audio_=audio;}
  void enemy_updated(unsigned moby);
  void update_nanotech(unsigned orb,NativeCrates::Update next)const;
+ void observe_gag_enemy(unsigned moby){gag_.observe(token(moby));}
+ bool gag_owns(unsigned moby)const{return gag_.owns(moby);}
+ bool gag_active()const{return gag_.active();}
+ float gag_rotor_angle()const{return gag_.rotor_angle();}
  Frame snapshot(bool primary,std::uint32_t epoch)const;
  void set_active(bool active){active_=active;if(!active)recoil_.cancel();}
  void set_golden(bool golden){golden_=golden;}
@@ -69,7 +75,7 @@ public:
  void pose(Phase phase,float angle);
  void align_weapon(float angle);
  void contact_sparks(Phase phase,float angle);
- void align_release(){if(arm_.releasing())arm_.align_weapon(weapon());}
+ void align_release(){if(arm_.releasing()||gag_.active())arm_.align_weapon(weapon());}
  void reset();
  unsigned hero()const{return global(0x13f350);}
  unsigned body()const{return read<unsigned>(hero()+0x2080);}
@@ -83,6 +89,7 @@ private:
  NativeRotor& rotor_;
  NativeContactSparks sparks_;
  NativeCrates crates_;
+ NativeCaptureGag gag_;
  WeaponAudioSink* audio_{};
  struct GroundContact {Target target{};unsigned updates{};} ground_contact_;
  std::optional<Vec3> contact_tip_;

@@ -96,6 +96,16 @@ void launch(Controller& c,Frame& f){
  finish_throw(c,f);
 }
 int main(){
+ struct GagFake final:Fake {
+  int gag_attempts=0;
+  bool try_capture_gag(const Frame&)override{++gag_attempts;return true;}
+ };
+ {GagFake world;Controller c(world);auto f=frame();f.primary=true;c.tick(f);
+  f.primary=false;steps(c,f,30);
+  CHECK(world.gag_attempts==0&&world.takes==0&&world.ammo==19);
+  f.primary=true;steps(c,f,14);
+  CHECK(world.gag_attempts==1&&world.takes==0&&world.queries==0&&world.ammo==18);
+  CHECK(c.counters().captures==0&&c.counters().throws==0);}
  {Fake w;Controller c(w);auto f=frame();spin(c,f);CHECK(w.takes==1);fill(c,f);f.primary=false;finish_throw(c,f);CHECK(c.phase()==Phase::Flying);w.collision=true;c.tick(f);CHECK(w.hits==1&&w.restores==1);steps(c,f,30);CHECK(c.phase()==Phase::Idle);CHECK(c.counters().throws==1);}
  {Fake w;Controller c(w);auto f=frame();spin(c,f);f.primary=false;steps(c,f,25);CHECK(c.phase()==Phase::Idle&&w.restores==1&&w.interrupted&&w.hits==0);CHECK(c.charge()==0&&c.counters().throws==0);}
  {Fake w;Controller c(w);auto f=frame();spin(c,f);

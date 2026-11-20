@@ -27,6 +27,7 @@ struct Stack {
 };
 }
 NativeWorld::NativeWorld(const openrac_api* api,openrac_mod* mod,NativeAmmunition& ammunition,NativeRotor& rotor,GuestArena& arena):Memory(api),arm_(api,arena),ammunition_(ammunition),rotor_(rotor),sparks_(api),crates_(api),
+ gag_(api,mod,snagglebeast_crush),
  allocate_(function<Allocate>("FUN_001ff288")),post_hit_(function<Hit>("FUN_L00_00259a88")),
  ray_(function<Ray>("FUN_001efa68")),basis_(function<Basis>("FUN_001fa030")),
  state_(function<State>("FUN_L00_002223f8")),scale_ticks_(reinterpret_cast<ScaleTicks>(find_function("FUN_001f96f8"))),
@@ -45,6 +46,11 @@ bool NativeWorld::identity_valid(Target t)const{
   &&read<unsigned char>(t.address+0x20)<0x80;
 }
 bool NativeWorld::valid(Target t)const{return identity_valid(t)&&(capturable_class(int(t.klass))||crates_.live_crate(t));}
+bool NativeWorld::try_capture_gag(const Frame& frame){
+ if(flight_count())return false;
+ const auto boss=gag_.candidate(frame);
+ return boss&&visible_from(frame.position+Vec3{0,0,.85f},boss,body())&&gag_.start(frame,token(body()),boss);
+}
 void NativeWorld::each_enemy(const void* context,void(*fn)(const void*,Target),bool include_crates)const{
  const auto first=read<unsigned>(global(0x15ff18)),last=read<unsigned>(global(0x15ff20));
  if(!Memory::valid(first,256)||last<first||last-first>4096*256||!Memory::valid(last-256,256))return;
@@ -511,6 +517,8 @@ void NativeWorld::observe_frame(const Frame& frame){
  contact_tip_.reset();
  const bool same_epoch=last_frame_.epoch==frame.epoch;
  last_frame_=frame;recoil_.tick(frame);frame_hits_=0;
+ if(!same_epoch)gag_.reset();
+ else if(gag_.active())gag_.tick(frame,token(body()),hero());
  if(throw_animation_body_&&!throw_strike_active())throw_animation_body_=throw_animation_weapon_={};
  if(same_epoch&&frame.playing&&!frame.paused&&frame.alive&&finite(frame.position)&&
     std::isfinite(frame.yaw)&&std::isfinite(frame.seconds)&&frame.seconds>0&&frame.seconds<=.1f)drain_hits();
@@ -524,8 +532,14 @@ bool NativeWorld::release_recoil_active()const{
   read<int>(hero()+0x10b8)==18&&read<int>(hero()+0x10b4)==2&&read<unsigned char>(hero()+0x20a4)==0;
 }
 void NativeWorld::enforce_release_recoil(){
- if(!recoil_.active()||read<int>(mode())==3)return;
- if(!release_recoil_active()){recoil_.cancel();recoil_body_={};return;}
+ if(gag_.active()){
+  if(read<int>(mode())!=0||!Memory::valid(hero(),0x22ac)||read<int>(hero()+0x22a8)<=0||
+     !active_||!gag_.owns_hero(token(body()))||read<int>(hero()+0x10b8)!=18||
+     read<int>(hero()+0x10b4)!=2||read<unsigned char>(hero()+0x20a4)!=0)return;
+ }else{
+  if(!recoil_.active()||read<int>(mode())==3)return;
+  if(!release_recoil_active()){recoil_.cancel();recoil_body_={};return;}
+ }
  // Native HeroMotion / Hero from rnc/gameplay/hero.h. Preserve velocity.z and
  // vertical integration, platform carry, position, camera input and all AI.
  for(unsigned offset:{0x190u,0x194u,0x160u,0xe0u,0xe4u,0x1d20u,0x1d24u})write<float>(hero()+offset,0);
@@ -565,7 +579,7 @@ bool NativeWorld::throw_contact_reached()const{
 bool NativeWorld::attack_input_ready()const{
  const auto control=read<unsigned>(hero()+hero_control_mode_offset);
  const auto state=read<int>(hero()+hero_state_offset);
- return active_&&control<2&&state!=1&&state!=hero_held_attack_state&&
+ return active_&&!gag_.active()&&control<2&&state!=1&&state!=hero_held_attack_state&&
   read<unsigned char>(hero()+hero_item_locked_offset)==0&&Memory::valid(weapon(),256);
 }
 void NativeWorld::finish_throw_animation(){
@@ -578,6 +592,7 @@ void NativeWorld::finish_throw_animation(){
 void NativeWorld::attack_cancelled(){finish_throw_animation();recoil_.cancel();recoil_body_={};arm_.reset();sparks_.reset();contact_tip_.reset();}
 void NativeWorld::cancelled(){
  ++cancellation_generation_;
+ gag_.reset();
  restore_lease(lease_,true);
  for(auto& entry:flights_){restore_lease(entry.lease,true);entry={};}
  deferred_={};deferred_head_=deferred_size_=frame_hits_=0;ground_contact_={};attack_cancelled();
@@ -630,7 +645,11 @@ void NativeWorld::animate(Motion motion){
  }
  if(motion==Motion::Recover&&!recoil_.active()&&!arm_.releasing())arm_.reset();
 }
-void NativeWorld::pose(Phase,float){arm_.settle(read<float>(global(0x15ed7c)));}
+void NativeWorld::pose(Phase,float){
+ const auto seconds=read<float>(global(0x15ed7c));
+ if(gag_.active())arm_.hold(body(),weapon(),last_frame_.yaw,seconds);
+ else arm_.settle(seconds);
+}
 void NativeWorld::align_weapon(float angle){
  if(auto tip=arm_.align_weapon(weapon()))if(lease_valid()){move(lease_.target,*tip,angle);contact_tip_=tip;}
 }

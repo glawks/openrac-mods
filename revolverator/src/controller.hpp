@@ -48,6 +48,7 @@ public:
  virtual ~World()=default;
  virtual bool attack_input_ready()const{return true;}
  virtual bool begin_attack()=0;
+ virtual bool try_capture_gag(const Frame&){return false;}
  virtual std::optional<Target> find_target(Vec3 origin,float yaw,float reach)=0;
  virtual bool valid(Target target)const=0;
  virtual bool capture(Target target)=0;

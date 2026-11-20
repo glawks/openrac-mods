@@ -92,6 +92,8 @@ constexpr FunctionName functions[] = {
     {"FUN_L00_002a5dd8","func_L00_002A7078"},
     {"FUN_L00_002c52a8","func_L00_002C6608"},
     {"FUN_L01_002aea70","func_L01_002AFD00"},
+    {"FUN_L07_003120d8","func_L07_003134B8"}, // Umbris's native boss impact shake.
+    {"FUN_L00_0028dc90","func_L00_0028EF68"}, // Play a stock sound on another class's emitter.
 };
 } // namespace
 

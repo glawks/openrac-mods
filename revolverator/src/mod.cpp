@@ -129,7 +129,9 @@ struct Session {
   controller.tick(f);
   if(!holding_enemy(controller.attack_phase())&&!f.paused)world.pose(controller.attack_phase(),controller.spin_angle());
   const auto held=world.weapon();
-  visuals.update_held({held,ammunition.count(),controller.attack_phase(),controller.charge(),controller.spin_angle(),f,golden(),arsenal.equipped_revolverator()});
+  const bool gag=world.gag_active();
+  visuals.update_held({held,ammunition.count(),gag?Phase::Spinning:controller.attack_phase(),controller.charge(),
+    gag?world.gag_rotor_angle():controller.spin_angle(),f,golden(),arsenal.equipped_revolverator()});
   if(const auto event=visuals.poll_equip())equip_audio.play(event->actor);
   else if(f.equipped)equip_audio.suppress_native_appearance(world.weapon());
   world.contact_sparks(controller.attack_phase(),controller.spin_angle());
@@ -164,7 +166,7 @@ using AutoSave=int(*)(int,int);
 using RestoreData=int(*)(unsigned,int,unsigned);
 using Restore=void(*)(int);
 Update walloper_original{},relay_original{},ammo_original{},nanotech_original{};Pad pad_original{};Load load_original{};
-Update gold_offer_original{};
+Update gold_offer_original{},snagglebeast_original{};
 Advance motion_input_original{};void(*planar_velocity_original)(float){};
 GetHit hit_original{};Death death_original{};Advance animation_original{};
 BuildVendor vendor_original{};
@@ -218,6 +220,11 @@ void canonicalize_weapon(unsigned moby){
 void motion_input(){motion_input_original();if(session){session->world.enforce_carry_speed();session->world.enforce_release_recoil();}}
 void planar_velocity(float angle){planar_velocity_original(angle);if(session){session->world.enforce_carry_speed();session->world.enforce_release_recoil();}}
 void gold_offer(unsigned moby){if(!session||!session->gold_vendor.update(moby))gold_offer_original(moby);}
+void snagglebeast(unsigned moby){
+ if(session&&session->world.gag_owns(moby))return;
+ snagglebeast_original(moby);
+ if(session)session->world.observe_gag_enemy(moby);
+}
 void pad(U32 address,U32 report,int size){
  std::optional<bool> physical;
  if(session&&address==session->world.global(0x13c940)&&size>0&&Memory::valid(report,unsigned(size)))
@@ -651,6 +658,7 @@ extern "C" OPENRAC_MOD_EXPORT int openrac_mod_load(const openrac_api* api,openra
   if(session->world.enable_crate_capture()){
    api->log(mod,OPENRAC_LOG_INFO,"Revolverator can carry ordinary crates with native crate updates");
   }
+  hook("rac1.moby.snagglebeast.update","void(u32)",reinterpret_cast<void*>(snagglebeast),reinterpret_cast<void**>(&snagglebeast_original));
   session->xp.frame();
   if(!session->xp.compatible())throw std::runtime_error("Revolverator " REVOLVERATOR_VERSION " requires Weapon XP API v4 when Weapon XP is enabled; update both mod packages");
   if(api->on_frame(mod,+[](void*){if(session)session->frame();},nullptr))throw std::runtime_error("Frame registration failed");

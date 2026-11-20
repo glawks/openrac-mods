@@ -87,6 +87,7 @@
     "rac1.level.load_gameplay",
     "rac1.pad.process_report",
     "rac1.moby.moby180.update",
+    "rac1.moby.snagglebeast.update",
     "rac1.moby.bolt.update",
     "rac1.combat.get_hit",
     "rac1.moby.record_death",
