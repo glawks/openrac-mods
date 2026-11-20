@@ -9,6 +9,27 @@ Without this mod, OpenRAC has a fixed keyboard layout of its own (WASD and
 IJKL as the two sticks) and the mouse does nothing. With it on, that layout
 is replaced by the bindings below, and you can change every one of them.
 
+## RAC2 main-menu hover prototype (rac2-hover-dev)
+
+This separate development branch starts from the in-game confirmed
+`1.2.7-rac2-alpha.8` build. It does **not** change gameplay camera,
+WASD, sniper aim, shooting, weapon-wheel hold, number keys or scrolling.
+
+On **RAC2 NTSC-U v1.01 only**, the front end's New Game / Load / Options
+list is read from the game's real menu layout and selected-row value.
+Moving the mouse over a menu row sends a native d-pad step towards it;
+a click on an unselected row waits until the game's highlight reaches
+that row before sending Cross. Clicking outside its rows does not select
+the highlighted option. Keyboard navigation and Enter still work.
+
+This is an untested in-game prototype, and it **does not** implement
+mouse hit-testing in pause menus, other front-end pages, PAL or NTSC2.
+Those continue to use the existing directional-mouse fallback. No
+manual pointer writes or game menu patches are made.
+
+Use the `keyboard-mouse RAC2 hover prototype` GitHub Actions artifact
+to test it; keep alpha.8's known-good package available to restore.
+
 ## Experimental RAC2 support (fork only)
 
 This fork's `rac2-keyboard-mouse` branch adds **RAC2 compatibility testing**

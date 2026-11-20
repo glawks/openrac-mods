@@ -59,7 +59,7 @@ void* symbol(void* library, const char* name) {
 }
 
 // How big the test's game memory is, in bytes.
-constexpr std::uint32_t kMemorySize = 0x00200000u;
+constexpr std::uint32_t kMemorySize = 0x00300000u;
 
 // The host the mod runs against: the game's memory, the input the port would hand over, what the
 // mod asked of the port and what it registered. The test's host functions are C callbacks that
@@ -776,6 +776,113 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(start_fallback.held(kbm::kStart));
         CHECK(!start_fallback.held(kbm::kTriangle));
         CHECK(!start_fallback.held(kbm::kCross));
+
+        // Test only the RAC2 NTSC main list's actual pointer/row metadata:
+        // GUI + 0x3E430, child + 0x188. The list's owner page must be the
+        // visible main page, not the Options page or a pause dialog.
+        constexpr std::uint32_t kMainItems = 0x00261540u;
+        constexpr std::uint32_t kOptionsPage = 0x00140000u;
+        constexpr std::uint32_t kMainPage = 0x00150000u;
+        constexpr std::uint32_t kMenuGui = 0x00100000u;
+        constexpr std::uint32_t kRowPos = 0x00160000u;
+        constexpr std::uint32_t kMainList = kMenuGui + 0x3E430u;
+        constexpr std::uint32_t kChild = kMainList + 0x188u;
+        at<std::uint32_t>(kMainItems + 2u * 20u + 12u) = kOptionsPage;
+        at<std::uint32_t>(kOptionsPage + 0xE0u) = kMainPage;
+        at<std::uint32_t>(kMenuCurrent) = kMainPage;
+        at<std::uint32_t>(kGuiInstance) = kMenuGui;
+        at<std::uint32_t>(kChild + 0x4Cu) = kRowPos;
+        at<float>(kRowPos) = 256.0f;
+        at<float>(kRowPos + 4u) = 120.0f;
+        at<std::int32_t>(kChild + 0xA8u) = 12;
+        at<std::int32_t>(kChild + 0xACu) = 60;
+        at<std::int32_t>(kChild + 0xB0u) = 3;
+        at<std::int32_t>(kMainList + 0x16Cu) = 0;
+        const auto point_at = [](int row) {
+            g_host->input.pointer_inside = 1;
+            g_host->input.pointer_x = 0.5f;
+            g_host->input.pointer_y = static_cast<float>(140 + row * 60) / 416.0f;
+        };
+
+        // Hover from New Game to Options: move only one row per press,
+        // with a release between button edges. No accidental Cross.
+        tick();
+        point_at(2);
+        const Report hover_down = read_pad();
+        CHECK(hover_down.held(kbm::kDown));
+        CHECK(!hover_down.held(kbm::kCross));
+        tick();
+        point_at(2);
+        const Report hover_release = read_pad();
+        CHECK(!hover_release.held(kbm::kDown));
+        tick();
+        at<std::int32_t>(kMainList + 0x16Cu) = 1;
+        point_at(2);
+        const Report hover_again = read_pad();
+        CHECK(hover_again.held(kbm::kDown));
+        tick();
+        at<std::int32_t>(kMainList + 0x16Cu) = 2;
+        point_at(2);
+        const Report hover_settled = read_pad();
+        CHECK(!hover_settled.held(kbm::kDown));
+
+        // A click on New Game while Options is selected must wait for the
+        // highlight to move to row 0 rather than confirm Options.
+        tick();
+        point_at(0);
+        g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
+        const Report click_other = read_pad();
+        CHECK(click_other.held(kbm::kUp));
+        CHECK(!click_other.held(kbm::kCross));
+
+        tick();
+        point_at(0);
+        at<std::int32_t>(kMainList + 0x16Cu) = 1;
+        const Report click_release = read_pad();
+        CHECK(!click_release.held(kbm::kCross));
+        tick();
+        point_at(0);
+        const Report click_continue = read_pad();
+        CHECK(click_continue.held(kbm::kUp));
+        CHECK(!click_continue.held(kbm::kCross));
+        tick();
+        point_at(0);
+        at<std::int32_t>(kMainList + 0x16Cu) = 0;
+        const Report click_wait_for_release = read_pad();
+        CHECK(!click_wait_for_release.held(kbm::kCross));
+        tick();
+        point_at(0);
+        const Report click_confirm = read_pad();
+        CHECK(click_confirm.held(kbm::kCross));
+
+        // Clicking the background does not confirm an unrelated option,
+        // but keyboard Enter remains the normal Cross binding.
+        tick();
+        g_host->input.pointer_inside = 1;
+        g_host->input.pointer_x = 0.05f;
+        g_host->input.pointer_y = 0.05f;
+        g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
+        const Report empty_click = read_pad();
+        CHECK(!empty_click.held(kbm::kCross));
+        tick();
+        g_host->input.pointer_inside = 1;
+        g_host->input.pointer_x = 0.05f;
+        g_host->input.pointer_y = 0.05f;
+        press(40);
+        const Report enter_still_works = read_pad();
+        CHECK(enter_still_works.held(kbm::kCross));
+
+        // The hover path is disabled on a different page. Keep the
+        // original joystick-like fallback available there.
+        tick();
+        at<std::uint32_t>(kMenuCurrent) = kOptionsPage;
+        point_at(2);
+        const Report submenu = read_pad();
+        CHECK(!submenu.held(kbm::kDown));
+
+        at<std::uint32_t>(kMainItems + 2u * 20u + 12u) = 0;
+        at<std::uint32_t>(kMenuCurrent) = 0;
+        at<std::uint32_t>(kGuiInstance) = 0;
 
         std::fprintf(stderr, "DEBUG RAC2 front end\n");
         // RAC2 wheel is gameplay mode 4, although play_status calls it MENU.
