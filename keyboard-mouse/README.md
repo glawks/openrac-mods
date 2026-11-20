@@ -11,21 +11,29 @@ is replaced by the bindings below, and you can change every one of them.
 
 ## Experimental RAC2 support (fork only)
 
-This fork's `rac2-keyboard-mouse` branch adds an **untested, early RAC2 implementation**
+This fork's `rac2-keyboard-mouse` branch adds **RAC2 compatibility testing**
 for NTSC-U v1.01 (`ntsc`), PAL (`pal`) and NTSC-U v2.00 (`ntsc2`).
-RAC1's original input and direct camera implementation is kept unchanged.
+RAC1's full camera and menu implementation remains unchanged.
 
-The first RAC2 test uses WASD movement, jump, fire, wrench, pause, menus,
-right-click Quick Select and a mouse-to-right-stick camera. A plugged-in pad
-continues to work. Mouse aiming is not yet direct, and the Quick Select's
-stick selection needs in-game validation. RAC2's number-key weapon hotkeys,
-mouse wheel weapon switching, mouse hover menus and camera-reset shortcut
-are **not yet implemented**. Please do not test this as a production release.
+In RAC2, WASD, the mouse camera, firing and sniper aiming/zoom have been
+confirmed working in-game. **Quick Select mode 4** is now treated as
+gameplay input, so holding right click should keep the wheel open while
+mouse movement selects a direction. This must still be confirmed in-game.
 
-Testing: get a build artifact from this fork's RAC2 keyboard/mouse CI run,
-install the packaged ZIP manually in the OpenRAC launcher, and verify movement,
-mouse look, pausing and the ring first. Record the disc region and game log.
-Do not open a PR to the upstream mod until the behaviour is confirmed.
+The alpha also adds **1–8 Quick Select slot hotkeys** and **wheel up/down**
+to cycle those eight assigned slots, using RAC2's `Item_Equip` function
+and checking ownership. These are test features, not yet verified in-game.
+The game itself retains control of item selection and weapon behavior.
+
+**Menus:** moving the mouse now sends directional navigation taps and
+left-click confirms the currently highlighted item. This is *not yet
+pixel-accurate hover/click targeting*; mouse movement moves the selection
+rather than directly selecting the item underneath the pointer.
+
+Get the newest Windows Actions artifact from this fork's RAC2 alpha
+workflow and install the inner mod ZIP manually. Disable the official
+keyboard-mouse mod while testing. Report the exact game disc and log.
+Do not publish this fork's alpha as a release or send an upstream PR yet.
 
 ## Install
 

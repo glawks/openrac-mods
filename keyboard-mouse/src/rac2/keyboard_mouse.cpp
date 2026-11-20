@@ -5,6 +5,7 @@
 // No RAC1 game addresses or camera hook are used here. Direct camera,
 // inventory/number keys and pixel-perfect RAC2 menu hover need separate work.
 
+#include "openrac/games/rac2.hpp"
 #include "openrac/mod.hpp"
 #include "../kbm.hpp"
 
@@ -35,6 +36,7 @@ public:
             static_cast<float>(mod.setting<double>("mouse_acceleration"));
         look_settings_.invert_y = mod.setting<bool>("invert_y");
         capture_ = mod.setting<bool>("capture_cursor");
+        menu_mouse_ = mod.setting<bool>("menu_mouse");
         ring_dead_zone_ =
             static_cast<float>(mod.setting<double>("quick_select_dead_zone"));
     }
@@ -106,6 +108,79 @@ private:
         return mod_.version() == "pal" ? 0x001A8C60u : 0x001A8BB0u;
     }
 
+    // These globals are the same ones RAC2 saves as its eight Quick Select
+    // assignments. Item_Equip is a game function supplied by the SDK, not a
+    // hard-coded call into guest memory.
+    std::array<std::int32_t, kbm::kQuickSelectSlots> quick_slots() const {
+        const openrac::gaddr base =
+            mod_.version() == "pal" ? 0x001A7438u : 0x001A73B8u;
+        std::array<std::int32_t, kbm::kQuickSelectSlots> slots{};
+        for (std::size_t i = 0; i < slots.size(); ++i)
+            slots[i] = mod_.memory().read<std::int32_t>(base + 4u * static_cast<openrac::gaddr>(i));
+        return slots;
+    }
+
+    bool item_owned(int item) const {
+        // RAC2 has 56 item IDs; never call the game's equip function with
+        // unowned/invalid items from empty or stale slots.
+        if (item <= 0 || item >= 56) return false;
+        const openrac::gaddr base =
+            mod_.version() == "pal" ? 0x001A7B80u
+            : mod_.version() == "ntsc2" ? 0x001A7B00u
+                                         : 0x001A7AF8u;
+        return mod_.memory().read<std::uint8_t>(base + static_cast<openrac::gaddr>(item)) != 0;
+    }
+
+    int currently_equipped() const {
+        // Hero's first item slot (+0x28 is its item ID).
+        const openrac::gaddr hero =
+            (mod_.version() == "pal" ? 0x00189F20u : 0x00189EA0u) - 0x80u;
+        return mod_.memory().read<std::int32_t>(hero + 0x1220u + 0x28u);
+    }
+
+    void equip_item(int item, std::uint32_t tick) {
+        if (!item_owned(item)) return;
+        using Equip = openrac::rac2::Item_Equip;
+        const auto equip = mod_.function<Equip::fn>(Equip::name);
+        if (equip == nullptr) {
+            if (!warned_equip_) {
+                mod_.warn("RAC2 Item_Equip is unavailable; weapon hotkeys are disabled");
+                warned_equip_ = true;
+            }
+            return;
+        }
+        if (equip(item) != 0) {
+            requested_item_ = item;
+            requested_tick_ = tick;
+        }
+    }
+
+    void weapon_keys(const openrac_input& in) {
+        if (!in.focused || in.overlay || !in.captured) return;
+        // Only in actual on-foot gameplay. Mode 4 is the weapon wheel, and
+        // another mode can be a pause menu, vendor or dialog.
+        if (mod_.memory().read<std::int32_t>(game_mode_address()) != 0) return;
+        const auto slots = quick_slots();
+        for (int i = 0; i < kbm::kQuickSelectSlots; ++i) {
+            const Action action = static_cast<Action>(static_cast<int>(Action::Weapon1) + i);
+            if (pressed(in, action, true)) {
+                equip_item(slots[static_cast<std::size_t>(i)], in.tick);
+                return;
+            }
+        }
+        const int direction = pressed(in, Action::WeaponNext, true) ? 1
+                            : pressed(in, Action::WeaponPrev, true) ? -1
+                                                                     : 0;
+        if (!direction) return;
+        int current = currently_equipped();
+        // The game's equip request may take a few frames to reach the item
+        // slot: successive wheel notches advance from the pending request.
+        if (requested_item_ > 0 && in.tick - requested_tick_ < 12)
+            current = requested_item_;
+        const int next = kbm::cycle_item(slots, current, direction);
+        if (next > 0 && next != current) equip_item(next, in.tick);
+    }
+
     void step(const openrac_input& in, const std::uint8_t* report) {
         const int phase = mod_.play_status().phase;
         const bool quick_select_mode =
@@ -130,6 +205,9 @@ private:
             ring_.reset();
             ring_open_ = false;
             repeats_ = {};
+            menu_stepper_.reset();
+            menu_pulses_.clear();
+            requested_item_ = 0;
             previous_phase_ = input_phase;
         }
 
@@ -197,6 +275,8 @@ private:
                 v.left_y = keys_.y;
             }
             ring_open_ = ring;
+            if (!ring && !quick_select_mode)
+                weapon_keys(in);
 
             // RAC2 has no exposed follow-camera override yet: emulate the
             // controller's right stick, with no persisted vertical tilt.
@@ -252,12 +332,28 @@ private:
                     v.held = static_cast<std::uint16_t>(v.held | buttons[i]);
                 if (!direction) repeats_[i].step(false);
             }
+
+            // RAC2 mouse-menu prototype: cursor motion scrolls the
+            // highlighted selection with d-pad taps; clicking uses the
+            // existing Cross/confirm binding. This intentionally does NOT
+            // assume RAC1's widget addresses or claim pixel-accurate hover.
+            const bool interactive_menu =
+                phase != OPENRAC_PLAY_FRONT_END || interactive_frontend;
+            if (interactive_menu && menu_mouse_ && in.pointer_inside
+                && in.focused && !in.overlay) {
+                const float dx = phase == OPENRAC_PLAY_FRONT_END ? 0.0f : in.mouse_dx;
+                const std::uint16_t direction =
+                    menu_stepper_.step(dx, in.mouse_dy);
+                if (direction != 0) menu_pulses_.push(direction);
+                v.held = static_cast<std::uint16_t>(v.held | menu_pulses_.step());
+            } else {
+                menu_stepper_.reset();
+                menu_pulses_.clear();
+            }
         } else if (scene) {
             v.held = kbm::buttons_for(Context::Cutscene, held, -1);
         }
 
-        // Weapon hotkeys and wheel remain RAC1-only until RAC2's item
-        // structures and two-page quick select are verified.
         pad_ = v;
     }
 
@@ -269,6 +365,8 @@ private:
     kbm::MouseLook look_{};
     kbm::RingPointer ring_{};
     kbm::Latch latch_{};
+    kbm::Stepper menu_stepper_{};
+    kbm::Pulser menu_pulses_{};
     std::array<kbm::Repeat, 4> repeats_{};
     kbm::Virtual pad_{};
     std::uint32_t tick_ = std::numeric_limits<std::uint32_t>::max();
@@ -277,7 +375,11 @@ private:
     int last_frontend_ = -1;
     bool block_confirm_ = false;
     bool capture_ = true;
+    bool menu_mouse_ = true;
     bool ring_open_ = false;
+    bool warned_equip_ = false;
+    int requested_item_ = 0;
+    std::uint32_t requested_tick_ = 0;
     float ring_dead_zone_ = 30.0f;
 };
 
@@ -291,7 +393,7 @@ void load(openrac::Mod& mod) {
     mod.on_pad([keyboard](int port, std::uint8_t* report, int size) {
         keyboard->on_pad(port, report, size);
     });
-    mod.info("RAC2 experimental keyboard/mouse (pad-based camera; hotkeys not yet ported)");
+    mod.info("RAC2 experimental keyboard/mouse (Quick Select mode fix, weapon hotkeys and menu mouse steps)");
 }
 
 }  // namespace kbm_rac2
