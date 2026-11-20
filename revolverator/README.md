@@ -1,4 +1,4 @@
-# Revolverator 0.3.5
+# Revolverator
 
 By **lorenzogarrone**. The Italian in-game name is **Rotatore**.
 
@@ -13,11 +13,16 @@ scopes equipment changes during acquisition scenes and save operations to
 the mod's own state. Challenge Mode carries over the Rotatore's Golden upgrade,
 ammunition, XP and favourite when the slot is available.
 
-The [release page](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.5)
-includes the Windows package, corresponding source and validation receipt.
+The [0.3.5 release page](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.5)
+includes the installable Windows package, corresponding source and validation
+receipt. The valve, Golden spark tint and throw changes described below are in
+the development source.
 
 Native metal sparks follow the drill's contact with a spinning enemy. Their
-rate follows the rotation speed. The weapon's models are prepared
+rate follows the rotation speed. The Golden upgrade uses the green spark
+tint from the Golden Devastator. The rear valve pulses while the drill turns,
+venting a faint wisp at idle and darker smoke under load. It stays quiet during
+an empty trigger pull. The weapon's models are prepared
 automatically from the player's installed disc data, so the public package
 contains no copied game models, textures or HUD artwork.
 
@@ -51,14 +56,17 @@ and local log; players do not need to run build commands.
 Tap **Circle** for a melee strike. Hold it continuously for at least 0.18 seconds
 to catch an eligible enemy. Once captured, keep holding until the existing
 charge bar is full, then release to throw. The bar fills over 1.6 seconds of
-spinning; an uninterrupted hold still throws automatically after three seconds.
-Releasing before the displayed bar is full drops the live enemy onto the ground
-in front of Ratchet, returning it to native enemy behavior and its counterattack.
-That early drop does not launch a projectile, trigger a Golden explosion,
-play the throw animation or refund the round. See [charge release](docs/CHARGE_RELEASE.md).
+spinning. Releasing at full charge starts the native Walloper strike immediately.
+The enemy detaches from the drill tip at the end of Ratchet's forward drive.
+An uninterrupted hold starts the same strike automatically after three seconds.
+A new press is accepted after the native attack has recovered.
+Releasing early puts the enemy on the ground in front of Ratchet and restores its
+normal behavior. The **Immediate counterattack on an early drop** setting is off
+by default and can restore the immediate hit. See [charge release](docs/CHARGE_RELEASE.md)
+for the original release implementation.
 Ratchet moves at up to 50% of his native
-horizontal speed while holding an enemy; the limit ends when the target is
-released. A brief 150 ms movement hold gives the throw weight.
+horizontal speed while spinning an enemy. The native Walloper lunge takes over
+when Ratchet starts the throw.
 
 | Property | Value |
 | --- | ---: |

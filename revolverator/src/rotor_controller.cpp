@@ -23,8 +23,9 @@ void RotorController::dry_fire(){
 void RotorController::update(const RotorFrame& frame){
     if(!frame.playing||frame.paused||!std::isfinite(frame.seconds)||frame.seconds<=0||frame.seconds>.1f)return;
     const float previous=angle_;
-    const bool catching=frame.phase==Phase::Windup||frame.phase==Phase::Spinning;
-    if(frame.phase==Phase::Spinning){activation_=pulse_remaining_=0;}
+    const bool holding=holding_enemy(frame.phase);
+    const bool catching=frame.phase==Phase::Windup||holding;
+    if(holding){activation_=pulse_remaining_=0;}
     else{
         if(frame.phase==Phase::Windup)pulse_remaining_=pulse_duration;
         else pulse_remaining_=std::max(0.f,pulse_remaining_-frame.seconds);
@@ -48,7 +49,7 @@ void RotorController::update(const RotorFrame& frame){
         speed_=wrapped(angle_-previous)/frame.seconds;
         return;
     }
-    if(frame.phase==Phase::Spinning){
+    if(holding){
         if(!std::isfinite(frame.enemy_angle))return;
         if(!synchronized_){phase_offset_=wrapped(angle_-frame.enemy_angle);synchronized_=true;}
         angle_=wrapped(frame.enemy_angle+phase_offset_);

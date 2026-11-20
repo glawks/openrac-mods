@@ -8,6 +8,12 @@
 #include <limits>
 namespace revolverator {
 namespace {
+// Verified against retail Hero/Moby layouts and hero_set_state/update_movement.
+constexpr unsigned hero_state_offset=0x2084,hero_control_mode_offset=0x208c,
+ hero_state_timer_offset=0x198,hero_item_locked_offset=0x20ac;
+constexpr unsigned moby_destination_sequence_offset=0x53;
+constexpr int hero_idle_state=0,hero_held_attack_state=0x20;
+constexpr int walloper_hero_sequence=0x67,walloper_release_tick=18;
 struct Stack {
  const openrac_api* api;unsigned saved{},at{},size{};
  Stack(const openrac_api* a,unsigned n):api(a),size(n){at=api->stack_push(n,&saved);}
@@ -23,9 +29,9 @@ struct Stack {
 NativeWorld::NativeWorld(const openrac_api* api,openrac_mod* mod,NativeAmmunition& ammunition,NativeRotor& rotor,GuestArena& arena):Memory(api),arm_(api,arena),ammunition_(ammunition),rotor_(rotor),sparks_(api),
  allocate_(function<Allocate>("FUN_001ff288")),post_hit_(function<Hit>("FUN_L00_00259a88")),
  ray_(function<Ray>("FUN_001efa68")),basis_(function<Basis>("FUN_001fa030")),
- state_(function<State>("FUN_L00_002223f8")),animation_(function<Animation>("FUN_L00_002323b8")),
+ state_(function<State>("FUN_L00_002223f8")),scale_ticks_(reinterpret_cast<ScaleTicks>(find_function("FUN_001f96f8"))),
  burst_(function<Burst>("FUN_L00_0025f090")),
- mod_(mod),trace_(api->setting_bool(mod,"trace")!=0){}
+ mod_(mod),trace_(api->setting_bool(mod,"trace")!=0){drop_counterattack_=api->setting_bool(mod,"drop_counterattack")!=0;}
 NativeWorld::~NativeWorld(){reset();}
 void NativeWorld::log(const char* s)const{api_->log(mod_,OPENRAC_LOG_INFO,s);}
 Target NativeWorld::token(unsigned m)const{
@@ -246,7 +252,7 @@ void NativeWorld::drop(Target t){
  restore_lease(carried,false);
  if(audio_)audio_->emit(WeaponAudioCue::Drop);
  ground_contact_=position?GroundContact{t,0}:GroundContact{};
- const bool retaliation=counterstrike(t);
+ const bool retaliation=drop_counterattack_&&counterstrike(t);
  if(trace_){char message[240];std::snprintf(message,sizeof message,
   "undercharged drop target=%08x class=%u grounded=%d point=(%.5f,%.5f,%.5f) counterstrike=%d; native AI restored",
   t.address,t.klass,int(position.has_value()),ground.x,ground.y,ground.z,int(retaliation));log(message);}
@@ -380,7 +386,9 @@ void NativeWorld::launched(Target target,float,float blast_charge){
  *entry={};entry->target=target;entry->shot=shot;
  entry->impact.launch(target,golden_,blast_charge,damage_multiplier_);
  if(lease_.target&&lease_.target==target){entry->lease=lease_;entry->lease.flying=true;lease_={};}
- recoil_body_=shot.body;recoil_.start(last_frame_);enforce_release_recoil();
+ if(!throw_strike_active()){
+  recoil_body_=shot.body;recoil_.start(last_frame_);enforce_release_recoil();
+ }
 }
 void NativeWorld::impact_result(Target target,const ImpactContext& result){
  auto* entry=flight(target);if(!entry)return;
@@ -431,6 +439,7 @@ void NativeWorld::observe_frame(const Frame& frame){
  contact_tip_.reset();
  const bool same_epoch=last_frame_.epoch==frame.epoch;
  last_frame_=frame;recoil_.tick(frame);frame_hits_=0;
+ if(throw_animation_body_&&!throw_strike_active())throw_animation_body_=throw_animation_weapon_={};
  if(same_epoch&&frame.playing&&!frame.paused&&frame.alive&&finite(frame.position)&&
     std::isfinite(frame.yaw)&&std::isfinite(frame.seconds)&&frame.seconds>0&&frame.seconds<=.1f)drain_hits();
  if(!frame.equipped)arm_.reset();
@@ -452,7 +461,7 @@ void NativeWorld::enforce_release_recoil(){
 void NativeWorld::enforce_carry_speed(){
  // Only the current capture owns this cost. Launched enemies have separate
  // leases and must not keep Ratchet slowed while their flights finish.
- if(!active_||!lease_valid()||!Memory::valid(hero(),0x22ac)||read<int>(mode())!=0||
+ if(!active_||!lease_valid()||throw_strike_active()||!Memory::valid(hero(),0x22ac)||read<int>(mode())!=0||
     read<int>(hero()+0x22a8)<=0||read<int>(hero()+0x10b8)!=18||
     read<int>(hero()+0x10b4)!=2||read<unsigned char>(hero()+0x20a4)!=0)return;
  const auto player=token(body());
@@ -468,7 +477,33 @@ void NativeWorld::enforce_carry_speed(){
  write<float>(hero()+0xe0,velocity.x*scale);
  write<float>(hero()+0xe4,velocity.y*scale);
 }
-void NativeWorld::attack_cancelled(){recoil_.cancel();recoil_body_={};arm_.reset();sparks_.reset();contact_tip_.reset();}
+bool NativeWorld::throw_strike_active()const{
+ const auto held=token(weapon());
+ return active_&&throw_animation_body_&&identity_valid(throw_animation_body_)&&throw_animation_body_.address==body()&&
+  held&&held.address==throw_animation_weapon_.address&&held.stamp==throw_animation_weapon_.stamp&&
+  held.pvars==throw_animation_weapon_.pvars&&read<int>(hero()+hero_state_offset)==hero_held_attack_state&&
+  read<unsigned char>(body()+moby_destination_sequence_offset)==walloper_hero_sequence;
+}
+bool NativeWorld::throw_contact_reached()const{
+ // The stock forward drive ends at this tick. Keep the enemy on the tip
+ // through the lunge, then detach while the stock contact window is open.
+ const int release_tick=scale_ticks_?scale_ticks_(walloper_release_tick):walloper_release_tick;
+ return read<int>(hero()+hero_state_timer_offset)>=release_tick;
+}
+bool NativeWorld::attack_input_ready()const{
+ const auto control=read<unsigned>(hero()+hero_control_mode_offset);
+ const auto state=read<int>(hero()+hero_state_offset);
+ return active_&&control<2&&state!=1&&state!=hero_held_attack_state&&
+  read<unsigned char>(hero()+hero_item_locked_offset)==0&&Memory::valid(weapon(),256);
+}
+void NativeWorld::finish_throw_animation(){
+ // Hits, jumps, scene changes and unequip own their new state. Never replace it
+ // merely because our old animation token was still cached.
+ if(throw_strike_active()&&last_frame_.playing&&last_frame_.alive&&last_frame_.equipped&&
+    read<int>(mode())==0)state_(hero_idle_state,1);
+ throw_animation_body_=throw_animation_weapon_={};
+}
+void NativeWorld::attack_cancelled(){finish_throw_animation();recoil_.cancel();recoil_body_={};arm_.reset();sparks_.reset();contact_tip_.reset();}
 void NativeWorld::cancelled(){
  ++cancellation_generation_;
  restore_lease(lease_,true);
@@ -482,9 +517,12 @@ bool NativeWorld::blocks_native_hit(Target victim,unsigned hit)const{
  // keep the original native hit, including armor and damage rules. Keep this
  // decision with capture eligibility so callers cannot suppress their damage.
  // Our posted impacts name the weapon moby.
- return valid(victim)&&Memory::valid(hit,0x40)&&read<unsigned>(hit+0x20)==body()
-  &&read<unsigned short>(hit+0x2a)!=2017
-  &&(read<unsigned>(hit+0x24)&0x30000)!=0&&read<int>(hero()+0x10b8)==18;
+ if(!Memory::valid(hit,0x40)||read<unsigned>(hit+0x20)!=body()||read<int>(hero()+0x10b8)!=18)return false;
+ const auto flags=read<unsigned>(hit+0x24);
+ const auto origin=read<unsigned short>(hit+0x2a);
+ if(throw_strike_active()&&flags==0x30000&&read<unsigned char>(hit+0x29)==3&&
+    (origin==180||origin==2017||origin==2018)&&read<float>(hit+0x2c)==3.f)return identity_valid(victim);
+ return valid(victim)&&origin!=2017&&(flags&0x30000)!=0;
 }
 Frame NativeWorld::snapshot(bool primary,unsigned epoch)const{
  Frame f;f.epoch=epoch;f.seconds=read<float>(global(0x15ed7c));
@@ -492,21 +530,31 @@ Frame NativeWorld::snapshot(bool primary,unsigned epoch)const{
  f.playing=read<int>(mode())==0;f.paused=read<int>(mode())==3;
  const int state=read<int>(hero()+0x2084);
  f.alive=read<int>(hero()+0x22a8)>0&&state!=0x3d&&state!=0x82&&state!=0x77;
- f.primary=primary;f.grounded=state==0||state==1||state==2||state==3||state==0x20;
+ f.primary=primary;f.grounded=state==0||state==1||state==2||state==3||state==0x20||throw_strike_active();
  f.position=read<Vec3>(hero()+0x80);f.yaw=read<float>(hero()+0x98);return f;
 }
 void NativeWorld::animate(Motion motion){
  if(motion==Motion::DryFire){rotor_.dry_fire();return;}
  if(api_->loaded_level()<0||api_->loaded_level()>18)return;
- if(motion==Motion::Strike){if(audio_)audio_->emit(WeaponAudioCue::Attack);arm_.reset();state_(0x20,1);if(trace_)log("native Walloper strike");}
+ if(motion==Motion::Strike){throw_animation_body_=throw_animation_weapon_={};if(audio_)audio_->emit(WeaponAudioCue::Attack);arm_.reset();state_(hero_held_attack_state,1);if(trace_)log("native Walloper strike");}
+ if(motion==Motion::ThrowStrike){
+  const auto actor=token(body()),held=token(weapon());
+  if(!lease_valid()||!identity_valid(actor)||actor.klass!=0||!last_frame_.alive||
+     !last_frame_.equipped||!last_frame_.playing||!last_frame_.grounded||
+     read<int>(mode())!=0||!attack_input_ready())return;
+  // Use the same native movement state as capture. It owns the lunge, clip and
+  // transform-history trail. Its stock damage packet is filtered separately.
+  state_(hero_held_attack_state,1);
+  throw_animation_body_=actor;throw_animation_weapon_=held;
+  if(!throw_strike_active()){throw_animation_body_=throw_animation_weapon_={};return;}
+  arm_.begin_native_strike();
+  if(trace_)log("throw strike: native Walloper state=0x20 clip=0x67");
+ }
  if(motion==Motion::Release){
   if(audio_)audio_->emit(WeaponAudioCue::Throw);
-  // Do not enter wrench-boomerang recovery: its returning-weapon wait would
-  // delay the enemy. Only our short horizontal recoil hold accompanies release.
   arm_.release();
-  if(read<int>(hero()+0x2084)==0x20)state_(0,1);
   enforce_release_recoil();
-  if(trace_)log("throw released immediately; Ratchet recoil 0.15 seconds; independent flight");
+  if(trace_)log("throw detached on native Walloper contact; independent flight");
  }
  if(motion==Motion::Recover&&!recoil_.active()&&!arm_.releasing())arm_.reset();
 }
@@ -515,9 +563,9 @@ void NativeWorld::align_weapon(float angle){
  if(auto tip=arm_.align_weapon(weapon()))if(lease_valid()){move(lease_.target,*tip,angle);contact_tip_=tip;}
 }
 void NativeWorld::contact_sparks(Phase phase,float angle){
- const bool spinning=phase==Phase::Spinning&&lease_valid()&&contact_tip_.has_value()&&!level_transitioning();
+ const bool spinning=holding_enemy(phase)&&lease_valid()&&contact_tip_.has_value()&&!level_transitioning();
  const auto count=sparks_.update(last_frame_,spinning?lease_.target:Target{},contact_tip_.value_or(Vec3{}),
-     read<Vec3>(weapon()+0xd0)*-1.f,angle,rotor_.controller().speed());
+     read<Vec3>(weapon()+0xd0)*-1.f,angle,rotor_.controller().speed(),golden_);
  if(count&&trace_){
   const auto point=*contact_tip_;char text[280];
   std::snprintf(text,sizeof text,"contact sparks target=%08x class=%u point=(%.5f,%.5f,%.5f) speed=%.3f count=%u total=%llu",
@@ -529,6 +577,13 @@ std::optional<Vec3> NativeWorld::carry_anchor(float angle){
  if(lease_valid())lease_.hold_time+=std::clamp(read<float>(global(0x15ed7c)),0.f,.1f);
  (void)angle;
  contact_tip_=arm_.hold(body(),weapon(),read<float>(hero()+0x98),read<float>(global(0x15ed7c)));
+ return contact_tip_;
+}
+std::optional<Vec3> NativeWorld::throw_anchor(float angle,float progress){
+ if(!lease_valid())return {};
+ lease_.hold_time+=std::clamp(read<float>(global(0x15ed7c)),0.f,.1f);
+ (void)angle;
+ contact_tip_=arm_.throw_pose(weapon(),progress);
  return contact_tip_;
 }
 void NativeWorld::reset(){

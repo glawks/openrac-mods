@@ -9,6 +9,7 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -29,7 +30,12 @@ struct Fixture;
 Fixture* live;
 struct Fixture {
  std::vector<unsigned char> ram=std::vector<unsigned char>(0x2000000);
- openrac_api api{};GuestArena arena;NativeAmmunition ammunition;NativeRotor rotor;NativeWorld world;
+ bool drop_counterattack;
+ std::vector<std::array<int,2>> state_requests;
+ openrac_api api{};GuestArena arena;NativeAmmunition ammunition;NativeRotor rotor;
+ // Keep the flight and deferred-hit arrays off the test executable's stack.
+ std::unique_ptr<NativeWorld> world_storage;
+ NativeWorld& world;
  std::vector<Packet> packets;
  std::vector<openrac_hit> counterstrikes;
  std::vector<float> burst_sizes;
@@ -44,7 +50,7 @@ struct Fixture {
  static unsigned relocate(unsigned at){return at;}
  static unsigned relocate_level(int,unsigned at){return at;}
  static int loaded(){return live->current_level;}
- static int setting(openrac_mod*,const char*){return 0;}
+ static int setting(openrac_mod*,const char* key){return std::strcmp(key,"drop_counterattack")==0&&live->drop_counterattack;}
  static void log(openrac_mod*,int,const char*){}
  static unsigned stack_push(unsigned size,unsigned* saved){
   if(live->stack_fail_size==size)return 0;
@@ -55,8 +61,13 @@ struct Fixture {
  static int take_ammo(int,int){return 1;}
  static void bone(unsigned,int,unsigned){}
  static void basis(unsigned,unsigned){}
- static int set_state(int state,int){live->put(hero+0x2084,state);return 1;}
- static void animation(int,int,float){}
+ static int set_state(int state,int param){
+  live->state_requests.push_back({state,param});
+  live->put(hero+0x2084,state);
+  live->put(hero+0x208c,state==0x20?6:0);
+  live->put<unsigned char>(body+0x53,state==0x20?0x67:0);
+  return 1;
+ }
  static int ray(unsigned from,unsigned to,int mask,unsigned ignore,int){
   ++live->ray_calls;require(mask==0x24,"LOS uses the verified native collision mask");
   require(ignore==body||(ignore>=pool&&ignore<live->get<unsigned>(0x15ff20)),"ray ignores only a thrown actor or capturing hero");
@@ -90,7 +101,6 @@ struct Fixture {
   if(std::strcmp(name,"FUN_L00_00259a88")==0)return reinterpret_cast<void*>(&post_hit);
   if(std::strcmp(name,"FUN_001efa68")==0)return reinterpret_cast<void*>(&ray);
   if(std::strcmp(name,"FUN_L00_002223f8")==0)return reinterpret_cast<void*>(&set_state);
-  if(std::strcmp(name,"FUN_L00_002323b8")==0)return reinterpret_cast<void*>(&animation);
   if(std::strcmp(name,"FUN_L00_0025f090")==0)return reinterpret_cast<void*>(&burst);
   return nullptr;
  }
@@ -102,7 +112,10 @@ struct Fixture {
   api.moby_hit=+[](openrac_mod*,const openrac_hit* hit)->int{live->counterstrikes.push_back(*hit);return OPENRAC_HOOK_OK;};
   return &api;
  }
- Fixture():ammunition(prepare(this)),rotor(&api,arena),world(&api,reinterpret_cast<openrac_mod*>(1),ammunition,rotor,arena){
+ explicit Fixture(bool counterattack=false)
+  :drop_counterattack(counterattack),ammunition(prepare(this)),rotor(&api,arena),
+   world_storage(std::make_unique<NativeWorld>(&api,reinterpret_cast<openrac_mod*>(1),ammunition,rotor,arena)),
+   world(*world_storage){
   actor(body,0,{0,0,0},1);actor(weapon,180,{0,0,1},2);
   put(hero+0x2080,body);put(hero+0x1090,weapon);put(hero+0x10b8,18);put(hero+0x10b4,2);
   put(hero+0x22a8,4);put(hero+0x2084,0);put(hero+0x80,Vec3{});put(hero+0x98,0.f);
@@ -129,8 +142,43 @@ struct Fixture {
 };
 }
 int main(){
- for(bool golden:{false,true}){
-  Fixture f;AudioWitness audio;f.world.set_audio(&audio);f.floor_z=0.f;const auto victim=f.enemy(0,459,{1,0,.6f});
+ for(bool interrupted:{false,true}){
+  Fixture f;
+  const auto enemy=f.enemy(0,459,{1,0,.6f});
+  f.world.observe_frame(f.frame());
+  require(f.world.find_target({0,0,0},0,2.8f)==enemy&&f.world.capture(enemy),
+          "staged throw starts with a native enemy lease");
+  f.world.animate(Motion::ThrowStrike);
+  require(f.state_requests==std::vector<std::array<int,2>>{{0x20,1}}&&
+          f.world.throw_strike_active()&&f.world.lease_valid()&&!f.world.attack_input_ready(),
+          "charged release immediately starts the actual Walloper state and owns the enemy until contact");
+  if(interrupted){
+   f.put<unsigned char>(body+0x52,0x67);f.put<unsigned char>(body+0x53,0x06);
+   f.world.attack_cancelled();
+   require(!f.world.throw_strike_active()&&f.get<int>(hero+0x2084)==0x20&&f.state_requests.size()==1,
+           "a clip left in the source pose does not own a subsequent native action");
+  }else{
+   f.put(hero+0x198,17);require(!f.world.throw_contact_reached(),"the target stays attached through the lunge");
+   f.put(hero+0x198,18);require(f.world.throw_contact_reached(),"the end of the stock forward drive allows detachment");
+   const auto crate=f.enemy(1,500,{2,0,0});constexpr unsigned hit=0x70000;
+   f.put(hit+0x20,body);f.put(hit+0x24,0x30000u);
+   f.put<unsigned char>(hit+0x29,3);f.put<unsigned short>(hit+0x2a,2017);f.put(hit+0x2c,3.f);
+   require(f.world.blocks_native_hit(crate,hit),"throw suppresses its redundant melee contact even through the render alias");
+   f.put(hit+0x2c,8.f);
+   require(!f.world.blocks_native_hit(crate,hit),"projectile damage survives any original-body fallback");
+   f.world.launched(enemy,1.f,.6f);f.world.animate(Motion::Release);
+   require(f.world.flying(enemy)&&!f.world.release_recoil_active()&&f.world.throw_strike_active(),
+           "detachment leaves the native lunge free to complete");
+   for(int i=0;i<12;++i)f.world.observe_frame(f.frame());
+   require(f.world.flying(enemy)&&!f.world.attack_input_ready()&&f.get<int>(hero+0x2084)==0x20,
+           "Circle cannot repeat until the native follow-through ends");
+   Fixture::set_state(0,0);f.world.observe_frame(f.frame());
+   require(!f.world.throw_strike_active()&&f.world.attack_input_ready()&&f.world.flying(enemy),
+           "the native reset admits a new press while the previous flight continues");
+  }
+ }
+ for(bool golden:{false,true})for(bool counterattack:{false,true}){
+  Fixture f(counterattack);AudioWitness audio;f.world.set_audio(&audio);f.floor_z=0.f;const auto victim=f.enemy(0,459,{1,0,.6f});
   f.world.set_golden(golden);f.world.observe_frame(f.frame());
   require(f.world.find_target({0,0,0},0,2.8f)==victim&&f.world.capture(victim),"drop fixture captures an ordinary enemy");
   f.world.move(victim,{0,0,4},1);
@@ -145,13 +193,18 @@ int main(){
           "drop restores the original collision and AI state");
   require(f.packets.empty()&&f.burst_calls==0&&f.world.golden_explosions()==0&&!f.world.release_recoil_active(),
           "drop never posts weapon damage, Golden explosions or throw recoil");
-  require(f.counterstrikes.size()==1&&f.counterstrikes[0].victim==0&&f.counterstrikes[0].attacker==1&&
+  const auto expected_hits=std::size_t(counterattack);
+  require(f.counterstrikes.size()==expected_hits,"only the opt-in early drop posts a counterstrike");
+  if(counterattack){
+   require(f.counterstrikes[0].victim==0&&f.counterstrikes[0].attacker==1&&
           f.counterstrikes[0].mask==1&&near(f.counterstrikes[0].damage,1.f),
           "one native light-enemy melee hit names the released enemy and Ratchet");
-  require(near(f.counterstrikes[0].position[2],.75f)&&near(f.counterstrikes[0].velocity[0],-.2f)&&
-          f.get<int>(hero+0x22a8)==4,"the native SDK receives the contact and impulse without any direct health write");
+   require(near(f.counterstrikes[0].position[2],.75f)&&near(f.counterstrikes[0].velocity[0],-.2f),
+           "the native SDK receives the contact and impulse");
+  }
+  require(f.get<int>(hero+0x22a8)==4,"early drop never writes Ratchet's health directly");
   const auto after=f.ram;f.world.drop(victim);require(f.ram==after,"repeating an early-release callback is inert");
-  require(f.counterstrikes.size()==1,"repeating a drop never posts a second counterstrike");
+  require(f.counterstrikes.size()==expected_hits,"repeating a drop never posts a second counterstrike");
   require(audio.count(WeaponAudioCue::Capture)==1&&audio.count(WeaponAudioCue::Drop)==1&&
           audio.count(WeaponAudioCue::GroundContact)==0&&audio.count(WeaponAudioCue::Throw)==0&&
           audio.count(WeaponAudioCue::GoldenImpact)==0,"early release cues are distinct from throwing and landing waits for native update");
@@ -181,7 +234,7 @@ int main(){
   require(f.ram==before&&!f.world.lease_valid(),"a recycled captive is never moved or re-enabled by drop");
  }
  for(unsigned safety=0;safety<4;++safety){
-  Fixture f;const auto victim=f.enemy(0,459,{1,0,.6f});f.world.observe_frame(f.frame());
+  Fixture f(true);const auto victim=f.enemy(0,459,{1,0,.6f});f.world.observe_frame(f.frame());
   require(f.world.find_target({0,0,0},0,2.8f)&&f.world.capture(victim),"counterstrike safety fixture captures");
   if(safety==0){auto frame=f.frame();frame.position={10,0,0};f.put(hero+0x80,frame.position);f.world.observe_frame(frame);}
   if(safety==1)f.api.size=offsetof(openrac_api,moby_slot_of);

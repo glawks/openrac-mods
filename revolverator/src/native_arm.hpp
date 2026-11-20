@@ -11,6 +11,8 @@ public:
     NativeArm(const openrac_api* api,GuestArena& arena);
     ~NativeArm();
     std::optional<Vec3> hold(unsigned owner, unsigned weapon, float yaw, float seconds);
+    std::optional<Vec3> throw_pose(unsigned weapon,float progress);
+    void begin_native_strike();
     std::optional<Vec3> align_weapon(unsigned weapon);
     void release();
     bool releasing() const { return release_time_ > 0; }
@@ -26,6 +28,8 @@ private:
     float original_radius_{},owned_radius_{};
     int level_=-1,arena_level_=-1;
     float raised_time_{},release_time_{},yaw_{};
+    bool native_strike_{};
+    float throw_progress_{};
     float head_radial_=1.f,head_axial_=1.f;
     std::array<Quaternion,3> rotations_{{{0,0,0,1},{0,0,0,1},{0,0,0,1}}};
     std::array<Vec3,3> grip_axes_{};bool grip_ready_{};

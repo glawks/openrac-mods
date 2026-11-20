@@ -176,6 +176,39 @@ int main(){
         require(f.get<unsigned>(preview+0x64)==preview_original,"leaving inventory restores the exact native preview modifier chain");
         require(f.get<unsigned>(weapon+0x64)==gameplay_head,"leaving inventory preserves the live gameplay rotor");
     }
+    {
+        Fake f;
+        constexpr Vec3 valve_bind{-80,124,-300},head_bind{-132,3060,-10};
+        constexpr float units=.08294187486171722f/.1458333283662796f*1024.f;
+        const Vec3 mount=Vec3{.17517090f,.36608887f,3.06713867f}*units;
+        const Vec3 socket=Vec3{.16387811f,-4.71309948f,2.44934893f}*units;
+        f.put(skeleton+3*64+48,valve_bind);
+        NativeRotor rotor(&f.api,f.guest);
+        for(unsigned frame=0;frame<12;++frame)
+            rotor.update(weapon,20,Phase::Windup,0,0,1.f/60.f,true,false);
+        const unsigned head=f.get<unsigned>(weapon+0x64),valve=head-64;
+        const auto shaft_at=[&](Vec3 point){
+            const auto scale=f.get<Vec3>(head+0x20);
+            const auto v=point+head_bind;
+            const auto local=native_rotate(f.get<std::array<float,4>>(head+0x10),
+                {v.x*scale.x,v.y*scale.y,v.z*scale.z})+f.get<Vec3>(head+0x30);
+            return local*f.get<float>(valve+0x20)+f.get<Vec3>(valve+0x30);
+        };
+        const Vec3 rim=socket+Vec3{200,-1200,55};
+        const auto rest_rim=shaft_at(rim);
+        constexpr float pulse=1.075f;
+        rotor.set_valve_scale(pulse);
+        rotor.apply();
+        const auto vent_at=[&](Vec3 point){
+            return (point+valve_bind)*f.get<float>(valve+0x20)+f.get<Vec3>(valve+0x30);
+        };
+        require(distance(vent_at(mount),mount)<.001f,"the pulsating valve remains seated on its mounting ring");
+        const Vec3 mouth_offset{0,700,450};
+        require(distance(vent_at(mount+mouth_offset),mount+mouth_offset*pulse)<.001f,
+            "the valve mouth grows around its mounting ring");
+        require(distance(shaft_at(socket),socket)<.003f&&distance(shaft_at(rim),rest_rim)<.003f,
+            "the valve pulse cannot move or rescale the spinning drill, including during an attack");
+    }
     // The authored head and motor surfaces nearly meet at this socket. This
     // real-mesh fixture checks their separation, not just a chosen math pivot.
     for(const char* region:{"ntsc","pal"})for(unsigned render:{2017u,2018u})

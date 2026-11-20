@@ -36,7 +36,7 @@ bool Controller::flying(Target target)const{
  return false;
 }
 Phase Controller::phase()const{
- if(phase_==Phase::Windup||phase_==Phase::Spinning)return phase_;
+ if(holding_enemy(phase_))return Phase::Spinning;
  if(displayed_flight()&&(phase_==Phase::Idle||release_recovery_))return Phase::Flying;
  return phase_;
 }
@@ -46,11 +46,11 @@ Target Controller::target()const{
  const auto* flight=displayed_flight();return flight?flight->target:Target{};
 }
 float Controller::charge()const{
- if(phase_==Phase::Spinning)return std::clamp(spin_time_/settings_.full_charge,0.f,1.f);
+ if(holding_enemy(phase_))return std::clamp(spin_time_/settings_.full_charge,0.f,1.f);
  const auto* flight=displayed_flight();return phase()==Phase::Flying&&flight?flight->charge:0.f;
 }
 float Controller::blast_charge()const{
- if(phase_==Phase::Spinning&&std::isfinite(settings_.maximum_spin)&&settings_.maximum_spin>0)
+ if(holding_enemy(phase_)&&std::isfinite(settings_.maximum_spin)&&settings_.maximum_spin>0)
   return std::clamp(spin_time_/settings_.maximum_spin,0.f,1.f);
  const auto* flight=displayed_flight();return phase()==Phase::Flying&&flight?flight->blast_charge:0.f;
 }
@@ -111,6 +111,23 @@ void Controller::advance_flights(const Frame& f){
  // Finishing an older shot must never reset the pose or timer of a new attack.
  if(finished&&!target_&&phase_==Phase::Idle&&!displayed_flight())recover();
 }
+void Controller::launch(const Frame& f){
+ auto* flight=free_flight();
+ if(!flight||!world_.can_launch()){cancel_attack();return;}
+ const float power=charge(),blast=blast_charge(),speed=13.f+power*9.f;
+ *flight={target_,point_,{std::cos(f.yaw)*speed,std::sin(f.yaw)*speed,2.f+power*1.5f},0,power,blast,f.yaw,++sequence_};
+ const auto victim=target_;target_={};phase_=Phase::Recovery;timer_=0;release_recovery_=true;
+ ++counters_.throws;world_.launched(victim,power,blast);world_.animate(Motion::Release);
+}
+void Controller::advance_throw(const Frame& f){
+ if(!world_.throw_strike_active()||timer_>.5f){cancel_attack();return;}
+ const float duration=settings_.throw_strike;
+ const float progress=duration>0.f?std::clamp(timer_/duration,0.f,1.f):1.f;
+ angle_=std::remainder(angle_+f.seconds*42.f,6.283185307f);
+ if(const auto tip=world_.throw_anchor(angle_,progress))point_=*tip;
+ world_.move(target_,point_,angle_);
+ if(progress==1.f&&world_.throw_contact_reached())launch(f);
+}
 void Controller::tick(const Frame& f){
  world_.observe_frame(f);
  if(!have_epoch_){epoch_=f.epoch;have_epoch_=true;}
@@ -133,7 +150,9 @@ void Controller::tick(const Frame& f){
  if(!f.equipped)return;
  if(target_&&!world_.valid(target_)){const auto stale=target_;target_={};world_.discarded(stale);world_.attack_cancelled();recover();}
  const bool pressed=f.primary&&!held_;held_=f.primary;
- if(pressed&&phase_!=Phase::Spinning&&phase_!=Phase::Windup)buffered_=true;
+ const bool input_ready=world_.attack_input_ready();
+ if(!input_ready)buffered_=false;
+ if(pressed&&input_ready&&!holding_enemy(phase_)&&phase_!=Phase::Windup)buffered_=true;
  if(phase_==Phase::Idle&&buffered_&&f.grounded&&free_flight()&&world_.can_launch()){
   buffered_=false;
   if(world_.begin_attack()){phase_=Phase::Windup;timer_=0;world_.animate(Motion::Strike);}
@@ -172,13 +191,12 @@ void Controller::tick(const Frame& f){
   point_=world_.carry_anchor(angle_).value_or(f.position+Vec3{0,0,settings_.orbit_height});
   world_.move(target_,point_,angle_);
   if(!f.primary||spin_time_>=settings_.maximum_spin){
-   auto* flight=free_flight();if(!flight||!world_.can_launch())break;
-   const float blast=blast_charge(),speed=13.f+power*9.f;
-   *flight={target_,point_,{std::cos(f.yaw)*speed,std::sin(f.yaw)*speed,2.f+power*1.5f},0,power,blast,f.yaw,++sequence_};
-   const auto victim=target_;target_={};phase_=Phase::Recovery;timer_=0;release_recovery_=true;
-   ++counters_.throws;world_.launched(victim,power,blast);world_.animate(Motion::Release);
+   phase_=Phase::ThrowStrike;timer_=0;
+   world_.animate(Motion::ThrowStrike);
+   if(!world_.throw_strike_active())cancel_attack();
   }
   break;}
+ case Phase::ThrowStrike:advance_throw(f);break;
  case Phase::Flying:break; // Flying is synthesized by phase(); gestures never enter it.
  }
 }

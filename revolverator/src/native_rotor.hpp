@@ -21,6 +21,8 @@ public:
     // Cosmetic equip envelope. It never changes rotor timing or attack state;
     // the visual owner updates the envelope and then calls apply().
     void set_assembly_pose(const EquipAssemblyPose&);
+    void set_valve_scale(float scale);
+    std::optional<Vec3> valve_outlet()const;
     void reset(bool discard=false);
     float angle()const{return controller_.angle();}
     const RotorController& controller()const{return controller_;}
@@ -34,7 +36,9 @@ private:
     bool pending_dry_{};
     bool hud_fallback_{};
     bool preserve_root_{};
-    Vec3 pivot_{},inverse_bind_offset_{};
+    float valve_scale_=1.f;
+    bool valve_ready_{};
+    Vec3 pivot_{},inverse_bind_offset_{},valve_pivot_{},valve_bind_offset_{};
     bool attached()const;
     bool attach(unsigned weapon);
     void unlink(unsigned node);

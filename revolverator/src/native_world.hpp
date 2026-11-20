@@ -17,11 +17,13 @@ class NativeWorld final:public World,public Memory {
 public:
  NativeWorld(const openrac_api* api,openrac_mod* mod,NativeAmmunition& ammunition,NativeRotor& rotor,GuestArena& arena);
  ~NativeWorld()override;
+ bool attack_input_ready()const override;
  bool begin_attack()override{return ammunition_.begin_attack();}
  std::optional<Target> find_target(Vec3 origin,float yaw,float reach)override;
  bool valid(Target target)const override;
  bool capture(Target target)override;
  std::optional<Vec3> carry_anchor(float angle)override;
+ std::optional<Vec3> throw_anchor(float angle,float progress)override;
  void move(Target target,Vec3 position,float yaw)override;
  void release(Target target,bool cancelled)override;
  void drop(Target target)override;
@@ -29,6 +31,8 @@ public:
  void impact(Target target,std::optional<Target> other,float charge)override;
  void observe_frame(const Frame& frame)override;
  bool can_launch()const override;
+ bool throw_strike_active()const override;
+ bool throw_contact_reached()const override;
  void launched(Target target,float throw_charge,float blast_charge)override;
  void impact_result(Target target,const ImpactContext& result)override;
  void cancelled()override;
@@ -82,17 +86,19 @@ private:
  using Ray=int(*)(unsigned,unsigned,int,unsigned,int);
  using Basis=void(*)(unsigned,unsigned);
  using State=int(*)(int,int);
- using Animation=void(*)(int,int,float);
+ using ScaleTicks=int(*)(int);
  using Burst=void(*)(unsigned,unsigned,int,float,float);
- Allocate allocate_; Hit post_hit_;Ray ray_;Basis basis_;State state_;Animation animation_;Burst burst_;
+ Allocate allocate_; Hit post_hit_;Ray ray_;Basis basis_;State state_;ScaleTicks scale_ticks_;Burst burst_;
  openrac_mod* mod_; bool trace_;
  bool active_=true;
  bool golden_=false;
+ bool drop_counterattack_=false;
  float damage_multiplier_=1.f;
  ReleaseRecoil recoil_;
  Frame last_frame_{};
  struct Shot {Target weapon{},body{};float multiplier=1.f,yaw{};};
  Target recoil_body_{};
+ Target throw_animation_body_{},throw_animation_weapon_{};
  std::uint64_t golden_explosions_{},golden_hits_{};
  int level_=-1;
  struct Lease {
@@ -114,6 +120,7 @@ private:
  const Flight* flight(Target target)const;
  Lease* owned_lease(Target target);
  bool identity_valid(Target target)const;
+ void finish_throw_animation();
  void each_enemy(const void* context,void(*fn)(const void*,Target),bool include_crates=false)const;
  void each_damageable(const void* context,void(*fn)(const void*,Target))const;
  Vec3 damage_centre(Target target)const;

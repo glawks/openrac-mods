@@ -11,11 +11,12 @@ OpenRAC launcher. It uses the Python bundled with that same client to run
 is needed. The helper uses only the Python standard library and performs no
 network requests.
 
-The original Hoven drill is retargeted onto the native held-weapon skeleton,
-retaining its independent head component. Base, Golden and the static Golden
-shop display are generated in a local cache. The Golden texture applies an
-authored warm-metal ramp to the player's original shading and alpha. The
-game's resident HUD glyph supplies the normal, Golden and AMMO icon variants.
+The original Hoven drill is retargeted onto the native held-weapon skeleton.
+The housing, rear valve and corkscrew each bind to their own native joint.
+Base, Golden and the static Golden shop display are generated in a local cache.
+The Golden texture applies an authored warm-metal ramp to the player's original
+shading and alpha. The game's resident HUD glyph supplies the normal, Golden and
+AMMO icon variants.
 
 The cache is under `%LOCALAPPDATA%/OpenRAC/revolverator/assets/derived/`.
 It is separate from the installation, mod files and game saves. Its key binds

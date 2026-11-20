@@ -6,8 +6,9 @@ wrench-contact effect rather than an imported texture or an electrical aura.
 
 The effect is cosmetic. It does not post damage, change ammunition, move the
 target, award XP, alter the drill's geometry or draw from gameplay randomness.
-Base and Golden use the same contact effect. The Golden explosion remains a
-separate effect triggered by a thrown enemy's collision.
+The base weapon uses the stock streak color. The Golden weapon uses the green
+tint of the Golden Devastator with the same streak and fade. The Golden impact
+explosion triggers separately when a thrown enemy collides.
 
 ## Ownership and timing
 

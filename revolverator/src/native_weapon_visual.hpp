@@ -3,6 +3,8 @@
 #pragma once
 #include "native_rotor.hpp"
 #include "native_weapon_alias.hpp"
+#include "native_valve_smoke.hpp"
+#include "valve_cycle.hpp"
 #include <optional>
 
 namespace revolverator {
@@ -25,6 +27,7 @@ public:
         bool logical_equipped{};
     };
     struct EquipEvent {unsigned actor{};};
+    struct ValveEmission {Vec3 point;float scale,load;unsigned count;};
 
     NativeWeaponVisual(const openrac_api*,GuestArena& level_arena,GuestArena& held_arena);
     NativeWeaponVisual(const NativeWeaponVisual&)=delete;
@@ -36,6 +39,7 @@ public:
     // Native animation adapters call this after their canonical update. It
     // publishes the current pose; no time or controller state advances here.
     bool publish_held(unsigned actor,bool custom,bool golden);
+    std::optional<ValveEmission> emit_valve_smoke(unsigned actor);
     bool publish_preview(Preview,unsigned actor,bool custom,bool golden,float fit=1.f);
     void clear_preview(Preview);
     void prepare_native(unsigned actor);
@@ -57,6 +61,9 @@ private:
     NativeWeaponAlias alias_;
     NativeRotor held_,standalone_,equipped_,acquisition_;
     EquipAssembly assembly_;
+    ValveCycle valve_cycle_;
+    ValveFrame valve_frame_;
+    NativeValveSmoke valve_smoke_;
     struct Identity {
         unsigned actor{},pclass{},pvars{},stamp{};
         bool operator==(const Identity& other)const{

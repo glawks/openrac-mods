@@ -18,11 +18,15 @@ struct Target {
  explicit operator bool()const{return address!=0;}
 };
 inline constexpr std::size_t maximum_flights=8;
-enum class Phase { Idle,Windup,Spinning,Flying,Recovery };
-enum class Motion { Strike,Raise,Release,Recover,DryFire };
+enum class Phase { Idle,Windup,Spinning,Flying,Recovery,ThrowStrike };
+enum class Motion { Strike,Raise,Release,Recover,DryFire,ThrowStrike };
+constexpr bool holding_enemy(Phase phase) {
+ return phase==Phase::Spinning||phase==Phase::ThrowStrike;
+}
 struct Settings {
  float reach=2.8f, windup=.04f, minimum_hold=.18f, capture_window=.45f, minimum_spin=.28f, full_charge=1.6f, maximum_spin=3.f;
  float orbit_radius=1.05f, orbit_height=2.05f, flight_seconds=1.4f, recovery=.3f;
+ float throw_strike=.16f;
 };
 struct Frame {
  float seconds=1.f/60.f; std::uint32_t epoch{};
@@ -42,11 +46,13 @@ struct ImpactContext {
 class World {
 public:
  virtual ~World()=default;
+ virtual bool attack_input_ready()const{return true;}
  virtual bool begin_attack()=0;
  virtual std::optional<Target> find_target(Vec3 origin,float yaw,float reach)=0;
  virtual bool valid(Target target)const=0;
  virtual bool capture(Target target)=0;
  virtual std::optional<Vec3> carry_anchor(float angle)=0;
+ virtual std::optional<Vec3> throw_anchor(float angle,float){return carry_anchor(angle);}
  virtual void move(Target target,Vec3 position,float yaw)=0;
  virtual void release(Target target,bool cancelled)=0;
  // A deliberate release before the displayed charge bar is full is a drop,
@@ -59,6 +65,8 @@ public:
  // original controller. NativeWorld latches provenance and owns release recoil.
  virtual void observe_frame(const Frame&){}
  virtual bool can_launch()const{return true;}
+ virtual bool throw_strike_active()const{return true;}
+ virtual bool throw_contact_reached()const{return true;}
  virtual void launched(Target,float /* throw_charge */,float /* blast_charge */){}
  virtual void impact_result(Target target,const ImpactContext& result){impact(target,result.other,result.charge);}
  virtual void cancelled(){}
@@ -100,6 +108,8 @@ private:
  void recover();
  void cancel_attack();
  void advance_flights(const Frame& frame);
+ void advance_throw(const Frame& frame);
+ void launch(const Frame& frame);
  float recovery_seconds()const;
  Flight* free_flight();
  const Flight* displayed_flight()const;

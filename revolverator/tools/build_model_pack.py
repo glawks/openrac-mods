@@ -3,10 +3,10 @@
 # Copyright (c) 2026 lorenzogarrone
 """Build the private graphics companion from the player's extracted R&C1 assets.
 
-Preserves the authentic drill geometry/UV/material. Its rigid housing binds to
-Walloper root0; the original separate corkscrew component binds to joint4. The
-native rotor supplies the shaft pivot and cancels native jab deformation. Never
-edits game data.
+Preserves the authentic drill geometry/UV/material. The housing binds to
+Walloper root0, the rear valve to joint3 and the corkscrew to joint4. The native
+rotor supplies both pivots and cancels native jab deformation. Never edits game
+data.
 """
 import argparse,copy,hashlib,json,struct,sys
 from pathlib import Path
@@ -55,27 +55,35 @@ def original_head_pivot(source):
 def retarget(source,target,ratio,report=None):
  original,raw=source;document=copy.deepcopy(original);buffer=bytearray(raw)
  target_doc,target_raw=target
- head_count=body_count=head_triangles=body_triangles=0
+ source_valve_joints={21,22,23}
+ vertex_counts={0:0,3:0,4:0}
+ triangle_counts={0:0,3:0,4:0}
  for mesh in document['meshes']:
   for primitive in mesh['primitives']:
    attrs=primitive['attributes'];accessor,offsets=array_positions(document,buffer,attrs['POSITION'])
    if accessor['componentType']!=5126:raise ValueError('Positions must be float32')
    joints=accessor_values(original,raw,attrs['JOINTS_0']);weights=accessor_values(original,raw,attrs['WEIGHTS_0'])
-   flags=[]
-   for joint,weight in zip(joints,weights):
-    influences={j for j,w in zip(joint,weight) if w>0}
-    if 35 in influences and influences!={35}:raise ValueError('The corkscrew is no longer a rigid original component')
-    flags.append(influences=={35})
    positions=accessor_values(original,raw,attrs['POSITION'])
-   for position,head in zip(positions,flags):
-    if head and position[1]>-4.70:raise ValueError('The original head component includes housing geometry')
+   new_joints=[]
+   for position,joint,weight in zip(positions,joints,weights):
+    influences={j for j,w in zip(joint,weight) if w>0}
+    destination=0
+    if 35 in influences:
+     if influences!={35} or position[1]>-4.70:
+      raise ValueError('The original corkscrew must be a rigid component outside the housing')
+     destination=4
+    elif influences & source_valve_joints:
+     if not influences <= source_valve_joints:
+      raise ValueError('The original rear valve has influences outside its own joints')
+     destination=3
+    new_joints.append(destination)
+    vertex_counts[destination]+=1
    indices=[row[0] for row in accessor_values(original,raw,primitive['indices'])]
    for start in range(0,len(indices),3):
-    classification={flags[i] for i in indices[start:start+3]}
-    if len(classification)!=1:raise ValueError('A triangle would span the rotating head and static housing')
-    if True in classification:head_triangles+=1
-    else:body_triangles+=1
-   head_count+=sum(flags);body_count+=len(flags)-sum(flags)
+    first,second,third=(new_joints[i] for i in indices[start:start+3])
+    if not first==second==third:
+     raise ValueError('A triangle would span independently moving drill components')
+    triangle_counts[first]+=1
    for offset in offsets:
     values=struct.unpack_from('<3f',raw,offset);struct.pack_into('<3f',buffer,offset,*(v*ratio for v in values))
    accessor['min']=[v*ratio for v in accessor['min']];accessor['max']=[v*ratio for v in accessor['max']]
@@ -84,7 +92,7 @@ def retarget(source,target,ratio,report=None):
     fmt={5121:'4B',5123:'4H',5126:'4f'}[kind]
     value=first*(255 if kind==5121 and accessor.get('normalized') else 65535 if kind==5123 and accessor.get('normalized') else 1)
     for index,offset in enumerate(offsets):
-     component=(4 if flags[index] else 0) if attribute=='JOINTS_0' else value
+     component=new_joints[index] if attribute=='JOINTS_0' else value
      struct.pack_into('<'+fmt,buffer,offset,component,0,0,0)
     accessor.pop('min',None);accessor.pop('max',None)
  document.pop('animations',None)
@@ -103,11 +111,14 @@ def retarget(source,target,ratio,report=None):
  document['accessors'].append(new_accessor);skin['inverseBindMatrices']=len(document['accessors'])-1;document['skins']=[skin]
  document['images'][0]['uri']='../textures/moby_revolverator_original.png'
  for mesh in document['meshes']:mesh['name']='revolverator_original'
- if head_count!=208 or body_count!=1338:raise ValueError('Unexpected original Hoven drill vertex components')
+ if vertex_counts!={0:1226,3:112,4:208}:
+  raise ValueError('Unexpected original Hoven drill vertex components')
  if report is not None:
-  report.update({'body_joint':0,'head_joint':4,'original_head_joint':35,
-   'head_vertices':head_count,'body_vertices':body_count,'head_triangles':head_triangles,
-   'body_triangles':body_triangles,'mixed_triangles':0,'head_pivot_source':original_head_pivot(source),
+  report.update({'body_joint':0,'valve_joint':3,'head_joint':4,'original_head_joint':35,
+   'original_valve_joints':sorted(source_valve_joints),
+   'head_vertices':vertex_counts[4],'body_vertices':vertex_counts[0],'valve_vertices':vertex_counts[3],
+   'head_triangles':triangle_counts[4],'body_triangles':triangle_counts[0],'valve_triangles':triangle_counts[3],
+   'mixed_triangles':0,'head_pivot_source':original_head_pivot(source),
    'head_pivot_model':[v*ratio for v in original_head_pivot(source)],
    'importer_inverse_bind_matrices_preserved':True,'mesh_instances':1})
  return write_glb(document,buffer)
@@ -137,7 +148,7 @@ def main():
   replaces[f'level_{index:02}']={'mobys':[args.target_class],'textures':['moby_revolverator_original']}
  sys.path.insert(0,str(args.editor.resolve()));import overrides
  originals=overrides.originals(files,levels)
- description='Original Hoven drill with a rigid housing and independently rotating corkscrew. '
+ description='Original Hoven drill with a rigid housing, moving rear valve and rotating corkscrew. '
  description+=('Replaces Walloper appearance.' if args.target_class==180 else f'Uses distinct render class{args.target_class}; original Walloper art remains unchanged. Requires the matching extended-level manifest.')
  manifest={'format':1,'id':'revolverator-original-model' if args.target_class==180 else 'revolverator-additive-model','game':'rac1','version':args.version,'name':'Revolverator original model','author':'Insomniac Games; community restoration adapter','description':description,'levels_format':source_format,'replaces':replaces,'originals':originals}
  out.mkdir(parents=True)

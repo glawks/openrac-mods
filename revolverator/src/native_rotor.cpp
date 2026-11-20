@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #include "native_rotor.hpp"
+#include "arm_math.hpp"
 #include <cmath>
 #include <cstring>
 
@@ -13,6 +14,11 @@ constexpr std::array<float,4> identity{0,0,0,1};
 // scaling about Y=0 pulled the head away from the stationary motor housing.
 constexpr Vec3 source_pivot{.16387811303138733f,-4.713099479675293f,2.4493489265441895f};
 constexpr float source_scale=.08294187486171722f;
+constexpr unsigned valve_joint=3,head_joint=4;
+// Centres of the welded mounting ring and exhaust rim in the Hoven model.
+constexpr Vec3 source_valve_mount{.17517090f,.36608887f,3.06713867f};
+constexpr Vec3 source_valve_mouth{.17468262f,1.70275879f,3.84436035f};
+constexpr Vec3 source_valve_normal{0.f,.85650438f,.51613976f};
 Vec3 turn_minus_y(Vec3 p,float angle){
     const float c=std::cos(angle),s=std::sin(angle);
     return {c*p.x-s*p.z,p.y,s*p.x+c*p.z};
@@ -38,12 +44,16 @@ bool NativeRotor::attach(unsigned weapon){
     if(!valid(klass,48)||read<unsigned char>(klass+8)!=5||!valid(skeleton,5*64))return false;
     const float scale=read<float>(klass+0x24);
     if(!std::isfinite(scale)||scale<=0)return false;
-    const auto root_bind=read<std::array<float,16>>(skeleton),head_bind=read<std::array<float,16>>(skeleton+4*64);
+    const auto root_bind=read<std::array<float,16>>(skeleton),head_bind=read<std::array<float,16>>(skeleton+head_joint*64);
     if(!unit_rotation(root_bind)||!unit_rotation(head_bind))return false;
     if(std::abs(root_bind[12])+std::abs(root_bind[13])+std::abs(root_bind[14])>.001f)return false;
     inverse_bind_offset_={head_bind[12],head_bind[13],head_bind[14]};
     if(!finite(inverse_bind_offset_))return false;
     pivot_=source_pivot*(source_scale/scale*1024.f);
+    const auto valve_bind=read<std::array<float,16>>(skeleton+valve_joint*64);
+    valve_bind_offset_={valve_bind[12],valve_bind[13],valve_bind[14]};
+    valve_ready_=unit_rotation(valve_bind)&&finite(valve_bind_offset_);
+    valve_pivot_=source_valve_mount*(source_scale/scale*1024.f);
     if(arena_level_!=api_->loaded_level()){arena_=0;arena_level_=api_->loaded_level();}
     if(!arena_)arena_=guest_.allocate(5*64);
     if(!arena_&&hud_fallback_){
@@ -79,6 +89,18 @@ void NativeRotor::set_assembly_pose(const EquipAssemblyPose& pose){
     }
     assembly_=pose;
 }
+void NativeRotor::set_valve_scale(float scale){
+    valve_scale_=std::isfinite(scale)&&scale>=1.f&&scale<=1.09f?scale:1.f;
+}
+std::optional<Vec3> NativeRotor::valve_outlet()const{
+    if(!attached()||!valve_ready_)return {};
+    const auto mouth=source_valve_mount+(source_valve_mouth-source_valve_mount)*valve_scale_;
+    const auto local=mouth*(source_scale*assembly_.housing_scale)+source_valve_normal*.012f;
+    const auto x=unit(read<Vec3>(owner_+0xc0)),y=unit(read<Vec3>(owner_+0xd0)),z=unit(read<Vec3>(owner_+0xe0));
+    if(length_squared(x)<.5f||length_squared(y)<.5f||length_squared(z)<.5f)return {};
+    const auto point=read<Vec3>(owner_+0x10)+x*local.x+y*local.y+z*local.z;
+    return finite(point)?std::optional<Vec3>{point}:std::nullopt;
+}
 void NativeRotor::apply(){
     if(!attached())return;
     // Modes1 replace the native Walloper jab's five local records. Body geometry
@@ -95,17 +117,28 @@ void NativeRotor::apply(){
     write(arena_+0x20,Vec3{housing,housing,housing});
     const float angle=std::remainder(controller_.angle()+assembly_.head_turn,6.2831853071795864769f);
     const float radial=controller_.radial_scale(),axial=controller_.axial_scale()*assembly_.head_axial_scale;
-    const auto head=arena_+4*64;
+    const auto head=arena_+head_joint*64;
     // Native joint quaternions use conjugated axis images. Positive native Y
     // therefore rotates the head about its outward -Y shaft, matching +Z enemy
     // rotation when the hand holds the drill upright.
     write(head+0x10,std::array<float,4>{0,std::sin(angle*.5f),0,std::cos(angle*.5f)});
-    write(head+0x20,Vec3{radial,axial,radial});
     // The port evaluates the guest Part's P4*S4, not the GLB's bind matrices.
     // Choose P4 translation so the effective palette is T(pivot)*R*T(-pivot),
     // without changing the shared native skeleton or importer-compatible IBMs.
     const auto offset=pivot_+inverse_bind_offset_;
-    write(head+0x30,pivot_-turn_minus_y({offset.x*radial,offset.y*axial,offset.z*radial},angle));
+    const auto head_translation=pivot_-turn_minus_y({offset.x*radial,offset.y*axial,offset.z*radial},angle);
+    const float valve_scale=valve_ready_?valve_scale_:1.f;
+    Vec3 valve_translation{};
+    if(valve_ready_){
+        const auto valve=arena_+valve_joint*64;
+        valve_translation=valve_pivot_-(valve_pivot_+valve_bind_offset_)*valve_scale;
+        write(valve+0x20,Vec3{valve_scale,valve_scale,valve_scale});
+        write(valve+0x30,valve_translation);
+    }
+    // Joint 4 is a child of the valve joint. Cancel the valve transform in
+    // its local pose so the drill rotates and grows about its original socket.
+    write(head+0x20,Vec3{radial/valve_scale,axial/valve_scale,radial/valve_scale});
+    write(head+0x30,(head_translation-valve_translation)*(1.f/valve_scale));
 }
 void NativeRotor::unlink(unsigned node){
     unsigned link=owner_+0x64;
@@ -121,7 +154,9 @@ void NativeRotor::reset(bool discard){
     owner_=klass_=stamp_=vars_=0;level_=-1;controller_.reset();
     assembly_={};
     pending_dry_=false;
-    pivot_=inverse_bind_offset_={};
+    valve_scale_=1.f;
+    valve_ready_=false;
+    pivot_=inverse_bind_offset_=valve_pivot_=valve_bind_offset_={};
     if(discard){arena_=0;arena_level_=-1;}
 }
 }

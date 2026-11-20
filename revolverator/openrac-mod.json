@@ -167,6 +167,13 @@
       "default": false
     },
     {
+      "key": "drop_counterattack",
+      "name": "Immediate counterattack on an early drop",
+      "description": "Allows a dropped enemy to deal an immediate hit when Circle is released before full charge. Enemies still resume normal behavior when this setting is off.",
+      "type": "bool",
+      "default": false
+    },
+    {
       "key": "trace",
       "name": "Diagnostic logging",
       "type": "bool",

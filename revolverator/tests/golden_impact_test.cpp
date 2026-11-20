@@ -34,6 +34,10 @@ struct WorldFake final:World {
 Frame frame(){Frame f;f.equipped=f.alive=f.playing=f.grounded=true;f.epoch=1;return f;}
 void tick(Controller& controller,Frame f,unsigned count){while(count--)controller.tick(f);}
 void begin_spin(Controller& controller,Frame& f){f.primary=true;tick(controller,f,15);require(controller.phase()==Phase::Spinning,"fixture reaches capture");}
+void finish_throw(Controller& controller,const Frame& frame,WorldFake& world){
+ for(unsigned i=0;i<150&&world.throws==0;++i)controller.tick(frame);
+ require(world.throws==1,"the staged release launches exactly once");
+}
 }
 int main(){
  GoldenImpact flight;
@@ -88,14 +92,20 @@ int main(){
   tick(controller,f,104);require(controller.charge()==1&&controller.blast_charge()<.7f,"throw speed reaches its original cap before blast");
   const float earlier=controller.blast_charge();tick(controller,f,30);
   require(controller.charge()==1&&controller.blast_charge()>earlier+.15f,"Golden blast keeps growing after original speed cap");
-  tick(controller,f,80);require(world.throws==1&&near(world.release_charge,1)&&near(world.blast_charge,1),"automatic release latches both charges once");
+  for(int i=0;i<80&&controller.attack_phase()!=Phase::ThrowStrike;++i)controller.tick(f);
+  require(controller.attack_phase()==Phase::ThrowStrike&&world.throws==0&&controller.blast_charge()==1.f,
+          "automatic strike holds the capped Golden charge until contact");
+  finish_throw(controller,f,world);
+  require(near(world.release_charge,1)&&near(world.blast_charge,1),"automatic release latches both charges once");
   f.equipped=false;world.collision=true;controller.tick(f);
   require(world.impacts==1&&world.cancellations==0&&world.result.reason==ImpactReason::Collision,"already launched projectile survives equip switch");
  }
  {
   WorldFake world;Controller controller(world);auto f=frame();begin_spin(controller,f);
   tick(controller,f,104);require(controller.charge()==1,"flight-lifetime fixture charges until throwing is permitted");
-  f.primary=false;controller.tick(f);require(world.throws==1,"manual release starts immediately at full charge");
+  f.primary=false;controller.tick(f);
+  require(controller.attack_phase()==Phase::ThrowStrike&&world.throws==0,"full manual release starts the native strike");
+  finish_throw(controller,f,world);
   f.paused=true;const auto point=world.point;tick(controller,f,100);
   require(world.impacts==0&&length_squared(world.point-point)==0,"pause freezes projectile lifetime");
   f.paused=false;f.equipped=false;tick(controller,f,120);
@@ -103,6 +113,7 @@ int main(){
  }
  for(unsigned event=0;event<3;++event){
   WorldFake world;Controller controller(world);auto f=frame();begin_spin(controller,f);tick(controller,f,104);f.primary=false;controller.tick(f);
+  finish_throw(controller,f,world);
   if(event==0)f.alive=false;else if(event==1)f.playing=false;else ++f.epoch;
   controller.tick(f);require(world.impacts==0&&world.cancellations==1&&!world.leased,"death/scene/travel cancel flight without impact");
  }

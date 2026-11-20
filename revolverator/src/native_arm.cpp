@@ -211,9 +211,16 @@ bool NativeArm::track_weapon(unsigned weapon) {
 std::optional<Vec3> NativeArm::hold(unsigned owner,unsigned weapon,float yaw,float seconds) {
     if(!std::isfinite(seconds)||seconds<0||seconds>.1f||!std::isfinite(yaw)||!attach(owner)||!valid(weapon,256))return {};
     if(!track_weapon(weapon))return {};
+    native_strike_=false;throw_progress_=0;
     release_time_=0;raised_time_=std::min(.32f,raised_time_+seconds);yaw_=yaw;
     return align_weapon(weapon);
 }
+std::optional<Vec3> NativeArm::throw_pose(unsigned weapon,float progress) {
+    if(!native_strike_||!std::isfinite(progress))return {};
+    throw_progress_=std::clamp(progress,0.f,1.f);
+    return align_weapon(weapon);
+}
+void NativeArm::begin_native_strike(){native_strike_=true;throw_progress_=0;}
 bool NativeArm::pose() {
     for(unsigned i=0;i<3;++i)write(arena_+i*64+0x10,identity);
     for(unsigned i=0;i<torso_joints;++i)write(arena_+torso_offset+i*64+0x10,identity);
@@ -223,7 +230,8 @@ bool NativeArm::pose() {
     const float progress=std::clamp(1.f-release_time_/.25f,0.f,1.f);
     // Solve the arm after the spine: the hand stays attached to its new shoulder
     // position, including when authored animation advances later in the frame.
-    if(releasing()&&!pose_torso(progress,outward))return false;
+    if(releasing()&&!native_strike_&&!pose_torso(progress,outward))return false;
+    if(native_strike_&&throw_progress_>=1.f)return grip_ready_;
     const auto shoulder=sample(53),elbow=sample(54),hand=sample(56);
     if(!shoulder||!elbow||!hand)return false;
     if(!grip_ready_){
@@ -235,11 +243,13 @@ bool NativeArm::pose() {
     }
     const float upper=std::sqrt(length_squared(position(*elbow)-position(*shoulder))),
         lower=std::sqrt(length_squared(position(*hand)-position(*elbow)));
-    const auto goal=releasing()?throw_goal(position(*shoulder),upper,lower,outward,forward,progress):
+    const auto goal=releasing()&&!native_strike_?throw_goal(position(*shoulder),upper,lower,outward,forward,progress):
         arm_goal(position(*shoulder),upper,lower,outward,forward,1);
     if(!goal)return false;
     const float t=std::clamp(raised_time_/.2f,0.f,1.f);
-    const float follow=releasing()?std::clamp((1.f-progress)/.35f,0.f,1.f):1.f;
+    const float strike=throw_progress_*throw_progress_*(3-2*throw_progress_);
+    const float follow=native_strike_?1.f-strike:
+        releasing()?std::clamp((1.f-progress)/.35f,0.f,1.f):1.f;
     const float weight=t*t*(3-2*t)*follow;
     if(!aim(arena_,53,54,goal->elbow,weight)||!aim(arena_+64,54,56,goal->hand,weight))return false;
     const float wrist=std::clamp((raised_time_-.08f)/.18f,0.f,1.f);
@@ -294,7 +304,7 @@ std::optional<Vec3> NativeArm::align_weapon(unsigned weapon) {
     return at+unit(read<Vec3>(weapon+0xc0))*.013592358f
         -unit(read<Vec3>(weapon+0xd0))*(.903450852f*head_axial_)+unit(read<Vec3>(weapon+0xe0))*.203153592f;
 }
-void NativeArm::release(){if(attached())release_time_=.25f;}
+void NativeArm::release(){if(attached()){release_time_=.25f;if(native_strike_)throw_progress_=1;}}
 void NativeArm::settle(float seconds) {
     if(release_time_<=0){reset();return;}
     if(!attached()){reset();return;}
@@ -320,6 +330,7 @@ void NativeArm::reset(bool discard) {
         }
     if(discard||api_->loaded_level()!=arena_level_){arena_=0;arena_level_=-1;}
     owner_=klass_=stamp_=weapon_=weapon_class_=weapon_stamp_=0;level_=-1;raised_time_=release_time_=yaw_=0;
+    native_strike_=false;throw_progress_=0;
     rotations_={identity,identity,identity};grip_ready_=false;grip_axes_={};original_radius_=owned_radius_=0;
 }
 }

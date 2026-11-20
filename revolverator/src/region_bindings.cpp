@@ -18,6 +18,7 @@ namespace {
 }
 struct FunctionName { const char* ntsc; const char* pal; };
 constexpr FunctionName functions[] = {
+    {"FUN_001f96f8","func_001F9850"}, // ScaleTicks, for the authored Walloper contact frame.
     {"FUN_001efa68","func_001EFE10"},
     {"FUN_001f4280","func_001F4630"},
     {"FUN_001f4398","func_001F4748"},
@@ -45,6 +46,7 @@ constexpr FunctionName functions[] = {
     {"FUN_0020cca8","func_0020DAF8"},
     {"FUN_0021a328","func_0021B298"}, // counterpart changes between discs; preserve the typed call boundary
     {"FUN_L00_0026c6e8","func_L00_0026D588"}, // resident native wrench-contact streak spawner, all levels
+    {"FUN_L00_0026ced0","func_L00_0026DD70"}, // PartType22 native smoke.
     {"FUN_0021b858","func_0021C840"}, // counterpart changes between discs; preserve the typed call boundary
     {"FUN_0021c7a0","func_0021D7A0"},
     {"FUN_0021c9c8","func_0021D9C8"},
@@ -154,6 +156,9 @@ unsigned RegionBindings::data(unsigned canonical) const {
     case 0x0015ff00u:return 0x00160000u;
     case 0x0015ff18u:return 0x00160018u;
     case 0x0015ff20u:return 0x00160020u;
+    case 0x001600acu:return 0x001601acu; // Native particle pool base.
+    case 0x001600b0u:return 0x001601b0u; // Next free particle slot.
+    case 0x001600b8u:return 0x001601b8u; // Active particle count.
     case 0x00160290u:return 0x00160390u;
     case 0x00160294u:return 0x00160394u;
     case 0x001863d0u:return 0x001864d0u;

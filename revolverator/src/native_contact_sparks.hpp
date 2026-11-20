@@ -7,11 +7,12 @@ namespace revolverator {
 class NativeContactSparks final : public Memory {
 public:
     explicit NativeContactSparks(const openrac_api*);
-    unsigned update(const Frame&,Target,Vec3 contact,Vec3 shaft,float angle,float angular_speed);
+    unsigned update(const Frame&,Target,Vec3 contact,Vec3 shaft,float angle,float angular_speed,bool golden);
     void reset(){rate_.reset();}
     bool available()const{return spawn_!=nullptr;}
     std::uint64_t emitted()const{return emitted_;}
 private:
+    void spawn_golden(unsigned stack)const;
     using Spawn=void(*)(unsigned,unsigned);
     Spawn spawn_{};ContactSparks rate_;std::uint32_t sequence_{};std::uint64_t emitted_{};
 };

@@ -5,7 +5,7 @@
 namespace revolverator {
 NativeWeaponVisual::NativeWeaponVisual(const openrac_api* api,GuestArena& level_arena,GuestArena& held_arena)
     :Memory(api),alias_(api),held_(api,held_arena),standalone_(api,level_arena,true),
-     equipped_(api,level_arena,true,true),acquisition_(api,level_arena,true,true){}
+     equipped_(api,level_arena,true,true),acquisition_(api,level_arena,true,true),valve_smoke_(api){}
 
 void NativeWeaponVisual::begin_native_frame(){alias_.frame(true);}
 void NativeWeaponVisual::restore_native(){alias_.frame();}
@@ -31,9 +31,11 @@ NativeWeaponVisual::Identity NativeWeaponVisual::identity(unsigned actor)const{
 }
 void NativeWeaponVisual::clear_held(){
     held_.reset();assembly_.reset();held_identity_={};equip_pending_=live_=logical_equipped_=pause_continuation_=false;
+    valve_cycle_.reset();valve_frame_={};
 }
 void NativeWeaponVisual::update_held(const HeldState& state){
     const auto& frame=state.frame;
+    valve_frame_.puffs=0;
     if(!state.logical_equipped){clear_held();alias_.apply(state.actor,false);return;}
     logical_equipped_=true;
     // Deep native weapon menus may temporarily retire the world item or put
@@ -64,10 +66,15 @@ void NativeWeaponVisual::update_held(const HeldState& state){
         if(!(current==held_identity_)){
             const bool continued=pause_continuation_&&held_identity_.actor;
             held_identity_=current;
-            if(!continued){assembly_.begin(state.ammunition>0);equip_pending_=true;}
+            if(!continued){assembly_.begin(state.ammunition>0);valve_cycle_.reset();equip_pending_=true;}
         }
         assembly_.update({frame.seconds,frame.playing,frame.paused,state.phase!=Phase::Idle,state.ammunition>0});
-        held_.set_assembly_pose(assembly_.pose());held_.apply();
+        const auto assembly=assembly_.pose();
+        const auto& motor=held_.controller();
+        const bool powered=live_&&frame.alive&&assembly.housing_scale>.9f&&!motor.dry_firing()&&
+            (state.ammunition>0||holding_enemy(state.phase)||state.phase==Phase::Windup);
+        valve_frame_=valve_cycle_.update(frame.seconds,motor.speed(),powered,frame.paused);
+        held_.set_assembly_pose(assembly);held_.set_valve_scale(valve_frame_.scale);held_.apply();
         if(live_)pause_continuation_=false;
     }
     // Every return restores the logical model, including the playing frame in
@@ -81,6 +88,16 @@ bool NativeWeaponVisual::publish_held(unsigned actor,bool custom,bool golden){
         return alias_.apply(actor,false);
     }
     held_.apply();return alias_.apply(actor,true,golden);
+}
+std::optional<NativeWeaponVisual::ValveEmission> NativeWeaponVisual::emit_valve_smoke(unsigned actor){
+    if(!live_||!valve_frame_.puffs||!held_.owns(actor)||!alias_.owns(actor))return {};
+    const unsigned puffs=valve_frame_.puffs;
+    valve_frame_.puffs=0;
+    const auto point=held_.valve_outlet();
+    if(!point)return {};
+    const auto count=valve_smoke_.emit(*point,valve_frame_.load,puffs);
+    if(!count)return {};
+    return ValveEmission{*point,valve_frame_.scale,valve_frame_.load,count};
 }
 bool NativeWeaponVisual::publish_preview(Preview context,unsigned actor,bool custom,bool golden,float fit){
     auto& pose=preview(context);

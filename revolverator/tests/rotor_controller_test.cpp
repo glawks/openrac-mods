@@ -82,6 +82,12 @@ int main(){
         require(rotor.radial_scale()==1&&rotor.axial_scale()==1,"catching an enemy immediately restores the normal-sized head");
         for(int i=0;i<100;++i){f.enemy_angle+=.4f;rotor.update(f);}
         require(rotor.radial_scale()==1&&rotor.axial_scale()==1,"a captive spins without any head enlargement");
+        f.phase=Phase::ThrowStrike;
+        const float offset=difference(rotor.angle(),f.enemy_angle);
+        f.enemy_angle+=.7f;rotor.update(f);
+        require(rotor.synchronized()&&close(difference(rotor.angle(),f.enemy_angle),offset)
+            &&std::abs(rotor.speed()-42.f)<.001f&&rotor.radial_scale()==1,
+            "the drill follows the captive until it detaches during the strike");
         f.phase=Phase::Recovery;for(int i=0;i<20;++i)rotor.update(f);
         require(rotor.radial_scale()==1&&rotor.axial_scale()==1,"head returns exactly to its original size after use");
         f.ammunition=0;rotor.dry_fire();rotor.update(f);

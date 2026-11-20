@@ -122,16 +122,22 @@ struct Session {
   world.set_golden(golden());presentation.set_golden(golden());
   auto f=world.snapshot(primary,epoch);
   const bool safe=f.playing&&!f.paused&&f.alive&&f.grounded&&controller.attack_phase()==Phase::Idle&&
-   !controller.flight_count()&&!world.release_recoil_active();
+   !controller.flight_count()&&!world.release_recoil_active()&&world.attack_input_ready();
   acquisition.frame(safe,xp.acquisition_presentation_active()>0);
   if(acquisition.active()){primary=false;f=world.snapshot(false,epoch);}
   world.set_drill_head_scale(visuals.controller().radial_scale(),visuals.controller().axial_scale());
   controller.tick(f);
-  if(controller.attack_phase()!=Phase::Spinning&&!f.paused)world.pose(controller.attack_phase(),controller.spin_angle());
-  visuals.update_held({world.weapon(),ammunition.count(),controller.attack_phase(),controller.charge(),controller.spin_angle(),f,golden(),arsenal.equipped_revolverator()});
+  if(!holding_enemy(controller.attack_phase())&&!f.paused)world.pose(controller.attack_phase(),controller.spin_angle());
+  const auto held=world.weapon();
+  visuals.update_held({held,ammunition.count(),controller.attack_phase(),controller.charge(),controller.spin_angle(),f,golden(),arsenal.equipped_revolverator()});
   if(const auto event=visuals.poll_equip())equip_audio.play(event->actor);
   else if(f.equipped)equip_audio.suppress_native_appearance(world.weapon());
   world.contact_sparks(controller.attack_phase(),controller.spin_angle());
+  if(const auto vent=visuals.emit_valve_smoke(held);vent&&api->setting_bool(mod,"trace")){
+   char line[200];std::snprintf(line,sizeof line,"valve smoke puffs=%u load=%.3f scale=%.4f at=(%.5f,%.5f,%.5f)",
+       vent->count,vent->load,vent->scale,vent->point.x,vent->point.y,vent->point.z);
+   api->log(mod,OPENRAC_LOG_INFO,line);
+  }
   world.set_drill_head_scale(visuals.controller().radial_scale(),visuals.controller().axial_scale());
   arsenal.commit();
   presentation.frame(f.equipped);
@@ -251,7 +257,7 @@ void walloper(U32 moby){
  }
  if(held){
   s.equip_audio.suppress_native_appearance(moby);
-  if(s.controller.attack_phase()==Phase::Spinning)s.world.align_weapon(s.controller.spin_angle());
+  if(holding_enemy(s.controller.attack_phase()))s.world.align_weapon(s.controller.spin_angle());
   else s.world.align_release();
   const bool applied=s.visuals.publish_held(moby,true,s.golden());
   static unsigned traced=0;if(traced<8&&s.api->setting_bool(s.mod,"trace")){
@@ -302,8 +308,15 @@ U32 load(int full){
 U32 get_hit(U32 moby,int mask,int keep){
  if(session)session->xp.before_hit();
  const auto hit=hit_original(moby,mask,keep);
- if(session&&session->arsenal.revolverator_active()&&session->controller.attack_phase()!=Phase::Idle&&session->world.blocks_native_hit(session->world.token(moby),hit)){
-  session->xp.block_hit(moby);if(keep)hit_original(moby,mask,0);return 0;
+ if(session&&session->arsenal.revolverator_active()){
+  auto& s=*session;
+  const bool throw_strike=s.world.throw_strike_active();
+  if((throw_strike||s.controller.attack_phase()!=Phase::Idle)&&s.world.blocks_native_hit(s.world.token(moby),hit)){
+   s.xp.block_hit(moby);
+   if(throw_strike)hit_original(moby,0,0); // A matching PAL mask returns the packet even with keep=0.
+   else if(keep)hit_original(moby,mask,0);
+   return 0;
+  }
  }
  if(session&&hit)session->xp.confirm_hit(moby,hit);
  return hit;
