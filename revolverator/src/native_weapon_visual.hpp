@@ -73,6 +73,7 @@ private:
     bool equip_pending_{},live_{},logical_equipped_{},pause_continuation_{};
     NativeRotor& preview(Preview);
     Identity identity(unsigned actor)const;
+    void restore_equipped_preview_hand(unsigned actor);
     void clear_held();
 };
 }

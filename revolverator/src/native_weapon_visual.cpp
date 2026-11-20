@@ -99,6 +99,21 @@ std::optional<NativeWeaponVisual::ValveEmission> NativeWeaponVisual::emit_valve_
     if(!count)return {};
     return ValveEmission{*point,valve_frame_.scale,valve_frame_.load,count};
 }
+void NativeWeaponVisual::restore_equipped_preview_hand(unsigned actor){
+    // The hand gadget's private data links its preview screen, which owns both
+    // actors. The native Walloper pose collapses the fist to fit inside its glove.
+    const unsigned data=read<unsigned>(actor+0x78);
+    if(!valid(data,4))return;
+    const unsigned screen=read<unsigned>(data);
+    if(!valid(screen,0x58)||read<unsigned>(screen+0x54)!=actor)return;
+    const unsigned preview_ratchet=read<unsigned>(screen+0x44);
+    const unsigned fist=global(0x1d5dd0);
+    if(!valid(preview_ratchet,256)||preview_ratchet==read<unsigned>(global(0x13f350)+0x2080)||
+       read<unsigned short>(preview_ratchet+0xa6)!=0||!valid(fist,64)||
+       read<unsigned>(preview_ratchet+0x64)!=fist||read<unsigned short>(fist)!=0x100)return;
+    const auto scale=read<Vec3>(fist+0x20);
+    if(scale.x==0.f&&scale.y==0.f&&scale.z==0.f)write(fist+0x20,Vec3{1.f,1.f,1.f});
+}
 bool NativeWeaponVisual::publish_preview(Preview context,unsigned actor,bool custom,bool golden,float fit){
     auto& pose=preview(context);
     // A foreign native actor can update while an acquisition actor is still
@@ -109,6 +124,7 @@ bool NativeWeaponVisual::publish_preview(Preview context,unsigned actor,bool cus
         pose.update(actor,0,Phase::Idle,0,0,0,false,true);
     const bool published=alias_.apply_preview(actor,true,golden);
     if(published&&context==Preview::Standalone)alias_.fit_preview(actor,fit);
+    if(published&&context==Preview::Equipped)restore_equipped_preview_hand(actor);
     return published;
 }
 void NativeWeaponVisual::clear_preview(Preview context){preview(context).reset();}

@@ -125,9 +125,27 @@ int main(){
         Fixture f(pal);NativeWeaponVisual visual(&f.api,f.level_arena,f.held_arena);
         auto state=f.state(Phase::Windup,false);visual.begin_native_frame();visual.update_held(state);visual.publish_held(held,true,false);
         const float angle=visual.controller().angle(),scale=visual.controller().radial_scale();
+        constexpr unsigned preview_ratchet=0x210800,screen=0x480000;
+        const unsigned fist=f.global(0x1d5dd0);
+        f.put(f.get<unsigned>(equipped+0x78),screen);
+        f.put(screen+0x44,preview_ratchet);
+        f.put(preview_ratchet+0x64,fist);
+        f.put<unsigned short>(fist,0x100);
+        const auto fist_scale=[&]{return f.get<Vec3>(fist+0x20);};
         visual.set_mode(3);
         require(visual.publish_preview(NativeWeaponVisual::Preview::Standalone,standalone,true,false,.65f),"standalone model uses its own pose owner");
+        require(fist_scale().x==0,"standalone rotation leaves native fist scaling alone");
+        f.put(screen+0x54,stock);
+        require(visual.publish_preview(NativeWeaponVisual::Preview::Equipped,equipped,true,true)&&fist_scale().x==0,
+                "an equipped from a different preview screen cannot change the fist");
+        f.put(screen+0x54,equipped);
+        f.put(f.global(0x13f350)+0x2080,preview_ratchet);
+        require(visual.publish_preview(NativeWeaponVisual::Preview::Equipped,equipped,true,true)&&fist_scale().x==0,
+                "the menu fix does not touch gameplay Ratchet");
+        f.put(f.global(0x13f350)+0x2080,0u);
         require(visual.publish_preview(NativeWeaponVisual::Preview::Equipped,equipped,true,true),"Ratchet preview uses a separate authored-root pose owner");
+        require(fist_scale().x==1&&fist_scale().y==1&&fist_scale().z==1,
+                "the custom equipped item restores the hand hidden by the original glove");
         require(visual.controller().angle()==angle&&visual.controller().radial_scale()==scale&&f.get<unsigned short>(held+0xa6)==2017,
                 "menu previews cannot reset, resize or recolor the frozen held weapon");
         const auto root=f.get<unsigned>(equipped+0x64)-4*64;
@@ -146,7 +164,10 @@ int main(){
         require(f.get<unsigned>(scene+0x64)==scene_head&&f.get<std::array<unsigned char,320>>(scene_head-4*64)==scene_parts&&
                 f.get<unsigned short>(scene+0xa6)==2018&&f.get<std::array<unsigned char,256>>(stock)==stock_record,
                 "an interleaved original Walloper cannot clear another acquisition actor's pending pose or render identity");
+        f.put(fist+0x20,Vec3{}); // The native callback puts the glove pose back first.
         visual.publish_preview(NativeWeaponVisual::Preview::Equipped,equipped,false,false);
+        require(fist_scale().x==0&&fist_scale().y==0&&fist_scale().z==0,
+                "the original Walloper retains the native fist scaling");
         require(f.get<unsigned short>(equipped+0xa6)==180&&f.get<unsigned>(equipped+0x64)==equipped+0x10000&&
                 f.get<unsigned>(scene+0x64)==scene_head,
                 "switching the same preview actor back to Walloper removes its neutralizers without disturbing acquisition");

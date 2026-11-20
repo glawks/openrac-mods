@@ -179,6 +179,7 @@ unsigned RegionBindings::data(unsigned canonical) const {
     case 0x001b3ac0u:return 0x001b3e40u;
     case 0x001cf120u:return 0x001cf4a0u;
     case 0x001d5bf0u:return 0x001d5f70u;
+    case 0x001d5dd0u:return 0x001d6160u;
     case 0x001df3f0u:return 0x001df770u;
     default:missing("executable data",0,canonical);
     }
