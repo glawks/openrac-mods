@@ -16,6 +16,8 @@ struct ArmGoal { Vec3 elbow, hand; };
 // target must not choose the equally reachable bend through Ratchet's head.
 std::optional<ArmGoal> arm_goal(Vec3 shoulder, float upper, float lower,
                                 Vec3 outward, Vec3 forward, float raise);
+std::optional<ArmGoal> arm_goal_for_hand(Vec3 shoulder, float upper, float lower,
+                                         Vec3 bend, Vec3 hand);
 std::optional<ArmGoal> throw_goal(Vec3 shoulder, float upper, float lower,
                                   Vec3 outward, Vec3 forward, float progress);
 // Small additive spine bend, in radians. Zero disables the experiment without

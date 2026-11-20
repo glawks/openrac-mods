@@ -31,6 +31,8 @@ Quaternion blend_rotation(Quaternion to, float weight) {
     return q;
 }
 namespace {
+constexpr float held_outward=.40f,held_forward=.56f,held_height=.60f;
+
 std::optional<ArmGoal> solve_arm(Vec3 shoulder,float upper,float lower,Vec3 outward,Vec3 offset) {
     if(!finite(shoulder)||!finite(outward)||!finite(offset)||
        !std::isfinite(upper)||!std::isfinite(lower)||upper<=.001f||lower<=.001f) return {};
@@ -45,13 +47,16 @@ std::optional<ArmGoal> solve_arm(Vec3 shoulder,float upper,float lower,Vec3 outw
     return ArmGoal{shoulder+direction*along+pole*side,shoulder+direction*distance};
 }
 }
+std::optional<ArmGoal> arm_goal_for_hand(Vec3 shoulder,float upper,float lower,Vec3 bend,Vec3 hand){
+    return solve_arm(shoulder,upper,lower,bend,hand-shoulder);
+}
 std::optional<ArmGoal> arm_goal(Vec3 shoulder,float upper,float lower,
                                 Vec3 outward,Vec3 forward,float raise) {
     if(!finite(forward))return {};
     const float reach=upper+lower;
     (void)raise;
     return solve_arm(shoulder,upper,lower,outward,
-        unit(outward)*(reach*.66f)+unit(forward)*(reach*.10f)+Vec3{0,0,reach*.67f});
+        unit(outward)*(reach*held_outward)+unit(forward)*(reach*held_forward)+Vec3{0,0,reach*held_height});
 }
 std::optional<ArmGoal> throw_goal(Vec3 shoulder,float upper,float lower,
                                   Vec3 outward,Vec3 forward,float progress) {
@@ -61,9 +66,9 @@ std::optional<ArmGoal> throw_goal(Vec3 shoulder,float upper,float lower,
     const float tail=std::clamp((p-.55f)/.45f,0.f,1.f);
     // Sweep the raised hand forward, then let it follow through below the
     // shoulder. The same outward pole keeps both solutions outside the head.
-    const Vec3 offset=unit(outward)*(reach*(.66f-.36f*s))+
-        unit(forward)*(reach*(.10f+.75f*s-.09f*tail))+
-        Vec3{0,0,reach*(.67f-.57f*s-.26f*tail)};
+    const Vec3 offset=unit(outward)*(reach*(held_outward+(.30f-held_outward)*s))+
+        unit(forward)*(reach*(held_forward+(.85f-held_forward)*s-.09f*tail))+
+        Vec3{0,0,reach*(held_height+(.10f-held_height)*s-.26f*tail)};
     return solve_arm(shoulder,upper,lower,outward,offset);
 }
 float throw_lean(float progress) {

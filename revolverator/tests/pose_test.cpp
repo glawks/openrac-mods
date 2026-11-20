@@ -56,7 +56,9 @@ int main() {
         require(std::abs(distance(shoulder,goal->elbow)-.207f)<.0002f,"upper arm length must be preserved");
         require(std::abs(distance(goal->elbow,goal->hand)-.17f)<.0002f,"forearm length must be preserved");
         require(dot(goal->elbow-shoulder,outward)>.12f,"elbow must bend outside the torso");
-        require(dot(goal->hand-shoulder,outward)>.20f,"wrist must stay outside the ear");
+        require(dot(goal->elbow-shoulder,forward)>.07f,"upper arm points forward while lifting the weapon");
+        require(dot(goal->hand-goal->elbow,forward)>.10f,"forearm and hand extend in front of the elbow");
+        require(dot(goal->hand-shoulder,outward)>.13f,"wrist stays outside the ear");
         require(goal->hand.z>shoulder.z+.20f,"wrist must be lifted above the shoulder");
         require(segment_distance(skull,shoulder,goal->elbow)>.21f,"upper arm must clear the head volume");
         require(segment_distance(skull,goal->elbow,goal->hand)>.21f,"forearm must clear the head volume");
