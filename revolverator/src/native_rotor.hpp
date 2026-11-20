@@ -23,6 +23,7 @@ public:
     void set_assembly_pose(const EquipAssemblyPose&);
     void set_valve_scale(float scale);
     std::optional<Vec3> valve_outlet()const;
+    std::optional<std::array<float,16>> housing_transform()const;
     void reset(bool discard=false);
     float angle()const{return controller_.angle();}
     const RotorController& controller()const{return controller_;}

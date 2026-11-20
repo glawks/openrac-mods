@@ -101,6 +101,19 @@ std::optional<Vec3> NativeRotor::valve_outlet()const{
     const auto point=read<Vec3>(owner_+0x10)+x*local.x+y*local.y+z*local.z;
     return finite(point)?std::optional<Vec3>{point}:std::nullopt;
 }
+std::optional<std::array<float,16>> NativeRotor::housing_transform()const{
+    if(!attached()||preserve_root_)return {};
+    // The overlay is authored in class164 metres. The retargeted gun is
+    // expressed in class180 units, then scaled by the actual rendered actor.
+    const float scale=read<float>(owner_+0x2c)/read<float>(klass_+0x24)*assembly_.housing_scale;
+    const auto x=read<Vec3>(owner_+0xc0),y=read<Vec3>(owner_+0xd0),z=read<Vec3>(owner_+0xe0);
+    const auto at=read<Vec3>(owner_+0x10);
+    if(!std::isfinite(scale)||scale<=0.f||scale>10.f||!finite(at)||
+       !finite(x)||!finite(y)||!finite(z)||
+       length_squared(x)<.5f||length_squared(y)<.5f||length_squared(z)<.5f)return {};
+    return std::array<float,16>{x.x*scale,x.y*scale,x.z*scale,0,
+        y.x*scale,y.y*scale,y.z*scale,0,z.x*scale,z.y*scale,z.z*scale,0,at.x,at.y,at.z,1};
+}
 void NativeRotor::apply(){
     if(!attached())return;
     // Modes1 replace the native Walloper jab's five local records. Body geometry

@@ -21,6 +21,9 @@ struct Fixture {
     std::vector<unsigned char> ram=std::vector<unsigned char>(0x2000000);
     openrac_api api{};GuestArena level_arena,held_arena;
     const RegionBindings& region;int level=1;
+    openrac_prop_pose vent_pose{};
+    unsigned vent_creates{},vent_removes{};
+    bool vent_visible{};
     template<class T>T get(unsigned at)const{T result{};std::memcpy(&result,ram.data()+at,sizeof result);return result;}
     template<class T>void put(unsigned at,const T& value){std::memcpy(ram.data()+at,&value,sizeof value);}
     unsigned global(unsigned at)const{return region.data(at);}
@@ -51,9 +54,61 @@ struct Fixture {
         result.phase=phase;result.charge=.5f;result.enemy_angle=.75f;result.golden=golden;result.logical_equipped=true;
         result.frame.equipped=result.frame.playing=result.frame.alive=true;return result;
     }
+    void track_vent(){
+        api.api_minor=12;
+        api.prop_create=+[](openrac_mod*,const char* path){
+            require(std::strcmp(path,"assets/vent-heat/slots.glb")==0,"heat uses a private vent-only mesh");
+            ++live->vent_creates;return 0;
+        };
+        api.prop_pose=+[](openrac_mod*,int,const openrac_prop_pose* pose){
+            live->vent_pose=*pose;return OPENRAC_HOOK_OK;
+        };
+        api.prop_hide=+[](openrac_mod*,int,int hidden){
+            live->vent_visible=!hidden;return OPENRAC_HOOK_OK;
+        };
+        api.prop_remove=+[](openrac_mod*,int){
+            live->vent_visible=false;++live->vent_removes;return OPENRAC_HOOK_OK;
+        };
+        put(held+0xc0,Vec3{0,1,0});put(held+0xd0,Vec3{-1,0,0});put(held+0xe0,Vec3{0,0,1});
+        put(held+0x10,Vec3{4,8,16});put<float>(held+0x2c,.1458333283662796f);
+    }
 };
 }
 int main(){
+    for(bool golden:{false,true}){
+        Fixture f(true);f.track_vent();
+        NativeWeaponVisual visual(&f.api,f.level_arena,f.held_arena,reinterpret_cast<openrac_mod*>(&f));
+        auto state=f.state(Phase::Idle,golden);
+        const auto frame=[&]{visual.begin_native_frame();visual.update_held(state);};
+        for(unsigned i=0;i<assembly_frames;++i)frame();
+        require(f.vent_creates==1&&f.vent_visible&&f.vent_pose.blend==OPENRAC_PROP_ADD,
+                "loaded idle renders one additive prop on the held weapon");
+        const auto idle=f.vent_pose;
+        require(idle.tint[3]>.1f&&idle.tint[3]<.3f&&idle.tint[0]>idle.tint[1]*10,
+                "idle is an understated red");
+        require(idle.matrix[1]==1&&idle.matrix[4]==-1&&idle.matrix[10]==1&&
+                idle.matrix[12]==4&&idle.matrix[13]==8&&idle.matrix[14]==16,
+                "heat matches the complete held housing transform");
+        state.phase=Phase::Spinning;
+        for(unsigned i=0;i<90;++i){state.enemy_angle+=.7f;frame();}
+        require(f.vent_pose.tint[3]>.8f&&f.vent_visible,"the slots grow brighter with the smoke load");
+        state.ammunition=0;
+        frame();require(!f.vent_visible,"empty magazines extinguish heat even when the last enemy is still held");
+        state.phase=Phase::Idle;
+        visual.held_rotor().dry_fire();
+        frame();require(!f.vent_visible,"pressing Circle on an empty magazine never lights the vents");
+        state.ammunition=20;
+        for(unsigned i=0;i<24;++i)frame();
+        require(f.vent_creates==1&&f.vent_visible,"resuming heat reuses the same prop");
+        state.frame.paused=true;
+        frame();require(!f.vent_visible,"pause suppresses the in-world glow");
+        state.frame.paused=false;
+        frame();require(f.vent_visible,"resuming restores the held effect");
+        state.logical_equipped=false;
+        frame();require(!f.vent_visible,"ordinary weapons never show the glow");
+        visual.reset();
+        require(f.vent_removes==1,"level teardown frees the prop");
+    }
     for(bool pal:{false,true})for(bool golden:{false,true})for(bool paused_first:{false,true}){
         Fixture f(pal);NativeWeaponVisual visual(&f.api,f.level_arena,f.held_arena);
         const auto stock_record=f.get<std::array<unsigned char,256>>(stock);

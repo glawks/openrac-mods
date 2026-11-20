@@ -40,7 +40,7 @@ struct Session {
  bool golden()const{const auto* state=registry.state(arsenal::RevolveratorKey);return state&&state->owned&&state->golden;}
  unsigned grant_override=0,native_save_depth=0;bool new_game_plus=false;
  std::deque<NativeArsenalXP::LevelUp> animations,events;
- Session(const openrac_api* a,openrac_mod* m):api(a),mod(m),ammunition(a,&arena,true),alias(a),vendor(a),vendor_icons(a,vendor),visuals(a,arena,core_arena),equip_audio(a),world(a,m,ammunition,visuals.held_rotor(),core_arena),controller(world),presentation(a,m,&arena,true),arsenal(a,registry,presentation),menu(a,arena,arsenal),saves(a,m,arsenal),xp(a,m,arsenal),gold_vendor(a,m,registry,visuals.native_alias()),acquisition(a,m,arena,{this,
+ Session(const openrac_api* a,openrac_mod* m):api(a),mod(m),ammunition(a,&arena,true),alias(a),vendor(a),vendor_icons(a,vendor),visuals(a,arena,core_arena,m),equip_audio(a),world(a,m,ammunition,visuals.held_rotor(),core_arena),controller(world),presentation(a,m,&arena,true),arsenal(a,registry,presentation),menu(a,arena,arsenal),saves(a,m,arsenal),xp(a,m,arsenal),gold_vendor(a,m,registry,visuals.native_alias()),acquisition(a,m,arena,{this,
   +[](void* user){auto& s=*static_cast<Session*>(user);s.presentation.set_golden(s.golden());s.arsenal.project(arsenal::RevolveratorKey);},
   +[](void* user){static_cast<Session*>(user)->restore_context();},
   +[](void* user,unsigned actor){auto& s=*static_cast<Session*>(user);

@@ -4,6 +4,7 @@
 #include "native_rotor.hpp"
 #include "native_weapon_alias.hpp"
 #include "native_valve_smoke.hpp"
+#include "native_vent_heat.hpp"
 #include "valve_cycle.hpp"
 #include <optional>
 
@@ -29,7 +30,7 @@ public:
     struct EquipEvent {unsigned actor{};};
     struct ValveEmission {Vec3 point;float scale,load;unsigned count;};
 
-    NativeWeaponVisual(const openrac_api*,GuestArena& level_arena,GuestArena& held_arena);
+    NativeWeaponVisual(const openrac_api*,GuestArena& level_arena,GuestArena& held_arena,openrac_mod* mod=nullptr);
     NativeWeaponVisual(const NativeWeaponVisual&)=delete;
     NativeWeaponVisual& operator=(const NativeWeaponVisual&)=delete;
     void begin_native_frame();
@@ -64,6 +65,7 @@ private:
     ValveCycle valve_cycle_;
     ValveFrame valve_frame_;
     NativeValveSmoke valve_smoke_;
+    NativeVentHeat vent_heat_;
     struct Identity {
         unsigned actor{},pclass{},pvars{},stamp{};
         bool operator==(const Identity& other)const{
@@ -71,6 +73,7 @@ private:
         }
     } held_identity_;
     bool equip_pending_{},live_{},logical_equipped_{},pause_continuation_{};
+    bool heating_{};
     NativeRotor& preview(Preview);
     Identity identity(unsigned actor)const;
     void restore_equipped_preview_hand(unsigned actor);

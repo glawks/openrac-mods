@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #include "native_weapon_visual.hpp"
+#include <cmath>
 
 namespace revolverator {
-NativeWeaponVisual::NativeWeaponVisual(const openrac_api* api,GuestArena& level_arena,GuestArena& held_arena)
+NativeWeaponVisual::NativeWeaponVisual(const openrac_api* api,GuestArena& level_arena,GuestArena& held_arena,openrac_mod* mod)
     :Memory(api),alias_(api),held_(api,held_arena),standalone_(api,level_arena,true),
-     equipped_(api,level_arena,true,true),acquisition_(api,level_arena,true,true),valve_smoke_(api){}
+     equipped_(api,level_arena,true,true),acquisition_(api,level_arena,true,true),valve_smoke_(api),vent_heat_(api,mod){}
 
 void NativeWeaponVisual::begin_native_frame(){alias_.frame(true);}
 void NativeWeaponVisual::restore_native(){alias_.frame();}
@@ -32,10 +33,12 @@ NativeWeaponVisual::Identity NativeWeaponVisual::identity(unsigned actor)const{
 void NativeWeaponVisual::clear_held(){
     held_.reset();assembly_.reset();held_identity_={};equip_pending_=live_=logical_equipped_=pause_continuation_=false;
     valve_cycle_.reset();valve_frame_={};
+    heating_=false;vent_heat_.hide();
 }
 void NativeWeaponVisual::update_held(const HeldState& state){
     const auto& frame=state.frame;
     valve_frame_.puffs=0;
+    heating_=false;
     if(!state.logical_equipped){clear_held();alias_.apply(state.actor,false);return;}
     logical_equipped_=true;
     // Deep native weapon menus may temporarily retire the world item or put
@@ -46,6 +49,7 @@ void NativeWeaponVisual::update_held(const HeldState& state){
         (read<unsigned short>(state.actor+0xa6)==NativeWeaponAlias::source_class||alias_.owns(state.actor));
     if(!frame.equipped||!native_actor){
         live_=false;
+        vent_heat_.hide();
         if(!frame.paused&&!pause_continuation_){clear_held();logical_equipped_=true;}
         alias_.apply(state.actor,false);return;
     }
@@ -74,6 +78,7 @@ void NativeWeaponVisual::update_held(const HeldState& state){
         const bool powered=live_&&frame.alive&&assembly.housing_scale>.9f&&!motor.dry_firing()&&
             (state.ammunition>0||holding_enemy(state.phase)||state.phase==Phase::Windup);
         valve_frame_=valve_cycle_.update(frame.seconds,motor.speed(),powered,frame.paused);
+        heating_=powered&&state.ammunition>0&&std::abs(motor.speed())>=.3f;
         held_.set_assembly_pose(assembly);held_.set_valve_scale(valve_frame_.scale);held_.apply();
         if(live_)pause_continuation_=false;
     }
@@ -83,11 +88,21 @@ void NativeWeaponVisual::update_held(const HeldState& state){
 }
 bool NativeWeaponVisual::publish_held(unsigned actor,bool custom,bool golden){
     if(!custom){
+        heating_=false;vent_heat_.hide();
         if(logical_equipped_&&pause_continuation_)held_.reset();
         else clear_held();
         return alias_.apply(actor,false);
     }
-    held_.apply();return alias_.apply(actor,true,golden);
+    held_.apply();
+    const bool published=alias_.apply(actor,true,golden);
+    if(published&&heating_&&held_.owns(actor)){
+        if(const auto pose=held_.housing_transform()){
+            vent_heat_.draw(*pose,valve_frame_.load);
+            return published;
+        }
+    }
+    vent_heat_.hide();
+    return published;
 }
 std::optional<NativeWeaponVisual::ValveEmission> NativeWeaponVisual::emit_valve_smoke(unsigned actor){
     if(!live_||!valve_frame_.puffs||!held_.owns(actor)||!alias_.owns(actor))return {};
@@ -135,6 +150,6 @@ std::optional<NativeWeaponVisual::EquipEvent> NativeWeaponVisual::poll_equip(){
     return EquipEvent{held_identity_.actor};
 }
 void NativeWeaponVisual::reset(){
-    clear_held();held_.reset(true);standalone_.reset(true);equipped_.reset(true);acquisition_.reset(true);alias_.reset();
+    clear_held();vent_heat_.reset();held_.reset(true);standalone_.reset(true);equipped_.reset(true);acquisition_.reset(true);alias_.reset();
 }
 }

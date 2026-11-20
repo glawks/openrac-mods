@@ -62,7 +62,7 @@ if(WIN32)
       "${revolverator_package}/lib/${OPENRAC_MOD_PLATFORM}/arsenal_file_overlay.dll"
     VERBATIM)
   add_dependencies(revolverator revolverator_file_overlay)
-  file(COPY assets/ammunition DESTINATION "${revolverator_package}/assets")
+  file(COPY assets/ammunition assets/vent-heat DESTINATION "${revolverator_package}/assets")
   file(COPY tools/prepare_runtime_assets.py tools/build_model_pack.py tools/build_golden_assets.py
     DESTINATION "${revolverator_package}/tools")
   file(COPY docs/ DESTINATION "${revolverator_package}/docs")
