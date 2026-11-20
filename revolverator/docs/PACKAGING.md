@@ -1,7 +1,7 @@
 # Release packaging and provenance
 
 The Windows archive is revolverator-0.4.0-windows-x86_64.zip with
-openrac-mod.json at its root. The manifest names author **lorenzogarrone**,
+openrac-mod.json at its root. The manifest names author **noire342**,
 version 0.4.0, GPL-3.0-or-later and minimum mod interface 1.12. Use
 `revolverator-v0.4.0` as the release tag. The receipt identifies the exact
 binaries and records PAL checks for the Umbris checkpoint, standard combat,

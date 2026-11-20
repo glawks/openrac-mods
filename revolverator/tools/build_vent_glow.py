@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (c) 2026 lorenzogarrone
+# Copyright (c) 2026 noire342
 """Fit new luminous inserts to the eight slots of the extracted Hoven drill."""
 import argparse
 import math

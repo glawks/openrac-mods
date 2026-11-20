@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (c) 2026 lorenzogarrone
+# Copyright (c) 2026 noire342
 """Fit four additive bands to the Hoven drill head, from the point to the housing."""
 import argparse
 import math

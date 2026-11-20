@@ -3,7 +3,7 @@
   "id": "revolverator",
   "name": "Revolverator",
   "version": "0.4.2",
-  "author": "lorenzogarrone",
+  "author": "noire342",
   "license": "GPL-3.0-or-later",
   "api": "1.12",
   "description": "Restores the Revolverator as a separate weapon with native menus, 20 rounds, independent saves and optional Weapon XP. Charged throws can heat the drill until it burns Ratchet. Includes a Golden upgrade, contact sparks and the original game sounds. PAL reference with NTSC-U bindings.",
