@@ -12,6 +12,8 @@ is needed. The helper uses only the Python standard library and performs no
 network requests.
 
 The original Hoven drill is retargeted onto the native held-weapon skeleton.
+The lower rectangular block is removed before retargeting. The rest of the
+mesh retains its original faces, normals, UVs and texture.
 The housing, rear valve and corkscrew each bind to their own native joint.
 Base, Golden and the static Golden shop display are generated in a local cache.
 The Golden texture applies an authored warm-metal ramp to the player's original

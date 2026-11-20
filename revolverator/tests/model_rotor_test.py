@@ -26,7 +26,21 @@ def main():
     source_path=source_level/source_info['mesh'];source,raw=builder.read_glb(source_path)
     original_primitive=source['meshes'][0]['primitives'][0];attributes=original_primitive['attributes']
     original={name:builder.accessor_values(source,raw,index) for name,index in attributes.items()}
-    triangles=builder.accessor_values(source,raw,original_primitive['indices'])
+    indices=[row[0] for row in builder.accessor_values(source,raw,original_primitive['indices'])]
+    block={i for i,(joints,weights) in enumerate(zip(original['JOINTS_0'],original['WEIGHTS_0']))
+           if {joint for joint,weight in zip(joints,weights) if weight>0}=={2}}
+    assert len(block)==24
+    retained=[i for i in range(len(original['POSITION'])) if i not in block]
+    remap={before:after for after,before in enumerate(retained)}
+    triangles=[]
+    for start in range(0,len(indices),3):
+        triangle=indices[start:start+3]
+        if set(triangle)<=block:
+            continue
+        assert set(triangle).isdisjoint(block)
+        triangles.extend((remap[i],) for i in triangle)
+    assert len(indices)-len(triangles)==36
+    original={name:[rows[i] for i in retained] for name,rows in original.items()}
     texture=(source_path.parent/source['images'][0]['uri']).read_bytes()
     metadata=json.loads((args.pack/'rotor.json').read_text())
     target_class=int(metadata.get('target_class',180))
@@ -45,7 +59,7 @@ def main():
         expected_positions=[tuple(struct.unpack('<f',struct.pack('<f',value*ratio))[0] for value in row)
                             for row in original['POSITION']]
         assert output['POSITION']==expected_positions, f'{name}: authentic geometry moved beyond the native scale conversion'
-        for attribute in ('NORMAL','TEXCOORD_0'):
+        for attribute in ('NORMAL','TEXCOORD_0','COLOR_0','_LIGHT_SLOT'):
             assert output[attribute]==original[attribute],f'{name}: source {attribute} changed'
         assert builder.accessor_values(document,data,primitive['indices'])==triangles,f'{name}: source topology changed'
         assignments=[]
@@ -60,7 +74,7 @@ def main():
             assert after_joints==(expected_joint,0,0,0),f'{name}: original geometry bound to wrong joint'
             assert after_weights[0]>0 and sum(after_weights[1:])==0,f'{name}: a rigid vertex has blended weights'
             assignments.append(expected_joint)
-        assert Counter(assignments)=={0:1226,3:112,4:208}
+        assert Counter(assignments)=={0:1202,3:112,4:208}
         valve_points={position for position,joint in zip(original['POSITION'],assignments) if joint==3}
         other_points={position for position,joint in zip(original['POSITION'],assignments) if joint!=3}
         assert len(valve_points)==72 and not valve_points&other_points,f'{name}: valve shares welded points with other components'
@@ -69,17 +83,18 @@ def main():
             first,second,third=(assignments[triangle[0]] for triangle in triangles[start:start+3])
             assert first==second==third,f'{name}: a triangle spans multiple moving components'
             triangle_counts[first]+=1
-        assert triangle_counts=={0:1204,3:134,4:202}
+        assert triangle_counts=={0:1192,3:134,4:202}
         assert sum('mesh' in node for node in document['nodes'])==1,f'{name}: duplicate mesh instance'
         assert overrides.same_skeleton(overrides.skeleton(model_path),overrides.skeleton(native_path)),f'{name}: launcher skeleton compatibility changed'
         assert (args.pack/name/'textures/moby_revolverator_original.png').read_bytes()==texture,f'{name}: authentic texture changed'
         assert metadata['levels'][name]['head_vertices']==208
         assert metadata['levels'][name]['valve_vertices']==112
+        assert metadata['levels'][name]['removed_block_triangles']==12
         if target_class!=180:
             assert not (args.pack/name/'mobys/moby_180.glb').exists(),f'{name}: independent pack must not replace native Walloper geometry'
         total+=1
-    print(json.dumps({'models':total,'target_class':target_class,'body_vertices_each':1226,'valve_vertices_each':112,'head_vertices_each':208,
-        'mixed_triangles':0,'geometry_uv_normals_topology_preserved':True,
+    print(json.dumps({'models':total,'target_class':target_class,'body_vertices_each':1202,'valve_vertices_each':112,'head_vertices_each':208,
+        'removed_block_triangles_each':12,'mixed_triangles':0,'remaining_geometry_uv_normals_topology_preserved':True,
         'all_native_inverse_binds_compatible':True,'original_texture_preserved':True},indent=2))
 
 

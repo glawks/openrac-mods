@@ -3,13 +3,17 @@
 # Copyright (c) 2026 lorenzogarrone
 """Build the private graphics companion from the player's extracted R&C1 assets.
 
-Preserves the authentic drill geometry/UV/material. The housing binds to
+Preserves the drill geometry, UVs and material after removing the lower block. The housing binds to
 Walloper root0, the rear valve to joint3 and the corkscrew to joint4. The native
 rotor supplies both pivots and cancels native jab deformation. Never edits game
 data.
 """
 import argparse,copy,hashlib,json,struct,sys
 from pathlib import Path
+
+COMPONENT_FORMATS={5121:'B',5123:'H',5125:'I',5126:'f'}
+ACCESSOR_COMPONENTS={'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4,'MAT4':16}
+LOWER_BLOCK_JOINT=2
 
 def read_glb(path):
  data=path.read_bytes()
@@ -28,20 +32,65 @@ def write_glb(document,buffer):
  buffer+=b'\0'*(-len(buffer)%4)
  return struct.pack('<III',0x46546c67,2,28+len(encoded)+len(buffer))+struct.pack('<II',len(encoded),0x4e4f534a)+encoded+struct.pack('<II',len(buffer),0x004e4942)+buffer
 
-def array_positions(document,buffer,index):
+def accessor_layout(document,index):
  accessor=document['accessors'][index];view=document['bufferViews'][accessor['bufferView']]
  base=view.get('byteOffset',0)+accessor.get('byteOffset',0)
- sizes={5121:1,5123:2,5126:4};components={'VEC3':3,'VEC4':4}
- stride=view.get('byteStride',sizes[accessor['componentType']]*components[accessor['type']])
- return accessor,[base+i*stride for i in range(accessor['count'])]
+ row=struct.Struct('<'+COMPONENT_FORMATS[accessor['componentType']]*ACCESSOR_COMPONENTS[accessor['type']])
+ stride=view.get('byteStride',row.size)
+ return accessor,view,row,[base+i*stride for i in range(accessor['count'])]
 
 def accessor_values(document,buffer,index):
- accessor=document['accessors'][index];view=document['bufferViews'][accessor['bufferView']]
- base=view.get('byteOffset',0)+accessor.get('byteOffset',0)
- fmt={5121:'B',5123:'H',5125:'I',5126:'f'}[accessor['componentType']]
- components={'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4,'MAT4':16}[accessor['type']]
- stride=view.get('byteStride',struct.calcsize(fmt)*components)
- return [struct.unpack_from('<'+fmt*components,buffer,base+i*stride) for i in range(accessor['count'])]
+ _,_,row,offsets=accessor_layout(document,index)
+ return [row.unpack_from(buffer,offset) for offset in offsets]
+
+def replace_packed_accessor(document,buffer,index,records):
+ accessor,view,row,offsets=accessor_layout(document,index)
+ capacity=view['byteLength']
+ if (accessor.get('byteOffset',0) or view.get('byteStride',row.size)!=row.size or
+     capacity!=len(offsets)*row.size or any(other is not accessor and other['bufferView']==accessor['bufferView']
+                                           for other in document['accessors'])):
+  raise ValueError('Expected a dedicated packed drill mesh accessor')
+ data=b''.join(records)
+ if not data or len(data)>capacity or len(data)%row.size:
+  raise ValueError('Invalid compacted drill mesh accessor')
+ start=offsets[0]
+ buffer[start:start+capacity]=data.ljust(capacity,b'\0')
+ view['byteLength']=len(data)
+ accessor['count']=len(data)//row.size
+ if 'min' in accessor or 'max' in accessor:
+  columns=list(zip(*row.iter_unpack(data)))
+  if 'min' in accessor:accessor['min']=[min(values) for values in columns]
+  if 'max' in accessor:accessor['max']=[max(values) for values in columns]
+
+def remove_lower_block(document,buffer,primitive):
+ attrs=primitive['attributes']
+ joints=accessor_values(document,buffer,attrs['JOINTS_0'])
+ weights=accessor_values(document,buffer,attrs['WEIGHTS_0'])
+ # The stock block is entirely on joint 2. Match that component before
+ # retargeting it, while the original mesh still separates it from the housing.
+ block={i for i,(joint_row,weight_row) in enumerate(zip(joints,weights))
+        if {joint for joint,weight in zip(joint_row,weight_row) if weight>0}=={LOWER_BLOCK_JOINT}}
+ retained=[i for i in range(len(joints)) if i not in block]
+ remap={source:target for target,source in enumerate(retained)}
+ index=primitive['indices']
+ _,_,index_row,_=accessor_layout(document,index)
+ indices=accessor_values(document,buffer,index)
+ kept_indices=[]
+ removed=0
+ for a,b,c in zip(indices[::3],indices[1::3],indices[2::3]):
+  triangle=(a[0],b[0],c[0])
+  excluded=sum(i in block for i in triangle)
+  if excluded==3:removed+=1
+  elif excluded:raise ValueError('The lower block shares a triangle with the drill body')
+  else:kept_indices.extend(index_row.pack(remap[i]) for i in triangle)
+ if len(block)!=24 or removed!=12 or len(indices)%3:
+  raise ValueError('Unexpected lower block geometry in the original Hoven drill')
+ for attribute in attrs.values():
+  _,_,row,offsets=accessor_layout(document,attribute)
+  replace_packed_accessor(document,buffer,attribute,
+      [buffer[offsets[i]:offsets[i]+row.size] for i in retained])
+ replace_packed_accessor(document,buffer,index,kept_indices)
+ return removed
 
 def original_head_pivot(source):
  document,raw=source
@@ -58,12 +107,14 @@ def retarget(source,target,ratio,report=None):
  source_valve_joints={21,22,23}
  vertex_counts={0:0,3:0,4:0}
  triangle_counts={0:0,3:0,4:0}
+ removed_block_triangles=0
  for mesh in document['meshes']:
   for primitive in mesh['primitives']:
-   attrs=primitive['attributes'];accessor,offsets=array_positions(document,buffer,attrs['POSITION'])
+   removed_block_triangles+=remove_lower_block(document,buffer,primitive)
+   attrs=primitive['attributes'];accessor,_,_,offsets=accessor_layout(document,attrs['POSITION'])
    if accessor['componentType']!=5126:raise ValueError('Positions must be float32')
-   joints=accessor_values(original,raw,attrs['JOINTS_0']);weights=accessor_values(original,raw,attrs['WEIGHTS_0'])
-   positions=accessor_values(original,raw,attrs['POSITION'])
+   joints=accessor_values(document,buffer,attrs['JOINTS_0']);weights=accessor_values(document,buffer,attrs['WEIGHTS_0'])
+   positions=accessor_values(document,buffer,attrs['POSITION'])
    new_joints=[]
    for position,joint,weight in zip(positions,joints,weights):
     influences={j for j,w in zip(joint,weight) if w>0}
@@ -78,17 +129,17 @@ def retarget(source,target,ratio,report=None):
      destination=3
     new_joints.append(destination)
     vertex_counts[destination]+=1
-   indices=[row[0] for row in accessor_values(original,raw,primitive['indices'])]
+   indices=[row[0] for row in accessor_values(document,buffer,primitive['indices'])]
    for start in range(0,len(indices),3):
     first,second,third=(new_joints[i] for i in indices[start:start+3])
     if not first==second==third:
      raise ValueError('A triangle would span independently moving drill components')
     triangle_counts[first]+=1
-   for offset in offsets:
-    values=struct.unpack_from('<3f',raw,offset);struct.pack_into('<3f',buffer,offset,*(v*ratio for v in values))
+   for offset,values in zip(offsets,positions):
+    struct.pack_into('<3f',buffer,offset,*(v*ratio for v in values))
    accessor['min']=[v*ratio for v in accessor['min']];accessor['max']=[v*ratio for v in accessor['max']]
    for attribute,first in [('JOINTS_0',0),('WEIGHTS_0',1)]:
-    accessor,offsets=array_positions(document,buffer,attrs[attribute]);kind=accessor['componentType']
+    accessor,_,_,offsets=accessor_layout(document,attrs[attribute]);kind=accessor['componentType']
     fmt={5121:'4B',5123:'4H',5126:'4f'}[kind]
     value=first*(255 if kind==5121 and accessor.get('normalized') else 65535 if kind==5123 and accessor.get('normalized') else 1)
     for index,offset in enumerate(offsets):
@@ -111,14 +162,14 @@ def retarget(source,target,ratio,report=None):
  document['accessors'].append(new_accessor);skin['inverseBindMatrices']=len(document['accessors'])-1;document['skins']=[skin]
  document['images'][0]['uri']='../textures/moby_revolverator_original.png'
  for mesh in document['meshes']:mesh['name']='revolverator_original'
- if vertex_counts!={0:1226,3:112,4:208}:
+ if vertex_counts!={0:1202,3:112,4:208} or removed_block_triangles!=12:
   raise ValueError('Unexpected original Hoven drill vertex components')
  if report is not None:
   report.update({'body_joint':0,'valve_joint':3,'head_joint':4,'original_head_joint':35,
    'original_valve_joints':sorted(source_valve_joints),
    'head_vertices':vertex_counts[4],'body_vertices':vertex_counts[0],'valve_vertices':vertex_counts[3],
    'head_triangles':triangle_counts[4],'body_triangles':triangle_counts[0],'valve_triangles':triangle_counts[3],
-   'mixed_triangles':0,'head_pivot_source':original_head_pivot(source),
+   'mixed_triangles':0,'removed_block_triangles':removed_block_triangles,'head_pivot_source':original_head_pivot(source),
    'head_pivot_model':[v*ratio for v in original_head_pivot(source)],
    'importer_inverse_bind_matrices_preserved':True,'mesh_instances':1})
  return write_glb(document,buffer)
