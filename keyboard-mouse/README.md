@@ -31,10 +31,18 @@ do not skip many rows. Deliberate horizontal swipes can step left/right for
 choice settings. Left-click confirms the highlighted option. This is *not
 yet pixel-accurate hover/click targeting*.
 
-**Quick Select:** while right-click remains held, a temporary loss of mouse
-capture no longer releases Triangle or re-enables movement/camera input in
-RAC2's weapon-wheel mode. The mod asks to recapture the cursor if necessary.
-This still needs an in-game retest; use an ordinary save for the alpha.
+**Quick Select:** physical RMB state now directly supplies Triangle to every
+gamepad report in normal play and wheel mode, bypassing the input context latch
+that can swallow a hold when RAC2 changes menu phases. It also handles multiple
+pad reads during one host tick. Capture-loss recovery and camera/movement
+suppression while the wheel is visible remain enabled.
+
+In case the wheel still closes unexpectedly, the game log now records
+`RAC2 Quick Select held: mode=..., phase=..., captured=...` when the game's
+mode changes while RMB is held. Send this part of the log after reproducing
+the problem; it tells us whether the game is actually leaving wheel mode.
+
+These changes still require in-game validation; use a normal save for testing.
 
 Get the newest Windows Actions artifact from this fork's RAC2 alpha
 workflow and install the inner mod ZIP manually. Disable the official

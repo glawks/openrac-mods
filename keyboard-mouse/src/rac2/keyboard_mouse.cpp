@@ -111,10 +111,43 @@ public:
             tick_ = in->tick;
             step(*in, report);
         }
-        kbm::merge(pad_, report, size);
+        // A game can change mode between two pad reads in the same host
+        // tick. Do not rely on step()'s cached menu/play context to maintain
+        // the physical Quick Select button: the game must always see
+        // Triangle while its key is held in ordinary play or wheel mode.
+        kbm::Virtual outgoing = pad_;
+        const auto status = mod_.play_status();
+        if (status.level >= 0) {
+            const int mode = mod_.memory().read<std::int32_t>(game_mode_address());
+            if (mode == 4) {
+                // A cached movement or camera axis from earlier in the tick
+                // must never carry over into the open weapon wheel.
+                outgoing.right_x = outgoing.right_y = 0.0f;
+                if (!quick_select_held(*in)) {
+                    outgoing.left_x = outgoing.left_y = 0.0f;
+                }
+            }
+            if ((mode == 0 || mode == 4) && quick_select_held(*in))
+                outgoing.held = static_cast<std::uint16_t>(
+                    outgoing.held | kbm::kTriangle);
+        }
+        kbm::merge(outgoing, report, size);
     }
 
 private:
+    // Read the player's configured Quick Select binding directly from the
+    // physical device, without Context::Menu/Play latching or mouse capture
+    // checks. A quick-select held across a menu-mode transition must not
+    // be treated as a new press, nor silently blocked until it is released.
+    bool quick_select_held(const openrac_input& in) const {
+        if (!in.focused || in.overlay) return false;
+        for (int key : binds_.of(Action::QuickSelect)) {
+            if (key != 0 && openrac_bind_held(&in, key))
+                return true;
+        }
+        return false;
+    }
+
     bool bound(const openrac_input& in, Action action, bool play) const {
         if (!in.focused || in.overlay) return false;
         const bool menu = kbm::kActions[static_cast<int>(action)].group == kbm::Group::Menu;
@@ -244,11 +277,29 @@ private:
     }
 
     void step(const openrac_input& in, const std::uint8_t* report) {
-        const int phase = mod_.play_status().phase;
-        const bool quick_select_mode =
-            phase == OPENRAC_PLAY_MENU
-            && mod_.memory().read<std::int32_t>(game_mode_address()) == 4;
+        const auto status = mod_.play_status();
+        const int phase = status.phase;
+        const int mode = status.level >= 0
+            ? mod_.memory().read<std::int32_t>(game_mode_address()) : -1;
+        // The wheel's mode is the source of truth, not the play-status
+        // classifier. It can change between pad polls within a host tick.
+        const bool quick_select_mode = status.level >= 0 && mode == 4;
         const bool play = phase == OPENRAC_PLAY_PLAYING || quick_select_mode;
+        const bool physical_wheel = quick_select_held(in);
+        if (physical_wheel) {
+            // Only log transitions, not every frame, so an intermittent
+            // unexpected mode change can be diagnosed from the game log.
+            if (last_wheel_mode_ != mode || last_wheel_phase_ != phase) {
+                mod_.info("RAC2 Quick Select held: mode=" + std::to_string(mode)
+                    + ", phase=" + std::to_string(phase)
+                    + ", captured=" + std::to_string(static_cast<int>(in.captured)));
+                last_wheel_mode_ = mode;
+                last_wheel_phase_ = phase;
+            }
+        } else {
+            last_wheel_mode_ = -2;
+            last_wheel_phase_ = -2;
+        }
         const bool menu = (phase == OPENRAC_PLAY_MENU && !quick_select_mode)
                           || phase == OPENRAC_PLAY_FRONT_END;
         const bool scene = phase == OPENRAC_PLAY_SCENE;
@@ -285,6 +336,11 @@ private:
                                 : scene ? Context::Cutscene
                                         : Context::Menu;
         held = latch_.filter(context, held);
+        // Quick Select is a hold action, not a click. In RAC2 the mode
+        // changes as the wheel opens, and a context latch can incorrectly
+        // suppress a still-held RMB. Reinsert it only in gameplay/wheel.
+        if (play && physical_wheel)
+            held |= kbm::bit(Action::QuickSelect);
 
         // The port labels both the Press Start title and the actual menu
         // FRONT_END, but they do not accept the same confirm button.
@@ -321,7 +377,7 @@ private:
         if (play) {
             v.held = kbm::buttons_for(Context::Play, held, -1);
 
-            const bool ring = on(Action::QuickSelect);
+            const bool ring = on(Action::QuickSelect) && physical_wheel;
             if (ring || quick_select_mode) {
                 if (ring) {
                     v.held = static_cast<std::uint16_t>(v.held | kbm::kTriangle);
@@ -446,6 +502,8 @@ private:
     bool menu_mouse_ = true;
     bool ring_open_ = false;
     bool warned_equip_ = false;
+    int last_wheel_mode_ = -2;
+    int last_wheel_phase_ = -2;
     int requested_item_ = 0;
     std::uint32_t requested_tick_ = 0;
     float ring_dead_zone_ = 30.0f;
@@ -461,7 +519,7 @@ void load(openrac::Mod& mod) {
     mod.on_pad([keyboard](int port, std::uint8_t* report, int size) {
         keyboard->on_pad(port, report, size);
     });
-    mod.info("RAC2 experimental keyboard/mouse (stable Quick Select capture and controlled menu mouse steps)");
+    mod.info("RAC2 experimental keyboard/mouse (Quick Select hold bypasses context latch; mode logging enabled)");
 }
 
 }  // namespace kbm_rac2

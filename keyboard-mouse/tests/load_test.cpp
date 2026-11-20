@@ -783,6 +783,35 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(wheel_no_button.bytes[4] == 0x80 && wheel_no_button.bytes[5] == 0x80);
         CHECK(wheel_no_button.bytes[2] == 0x80 && wheel_no_button.bytes[3] == 0x80);
 
+        // A real on-pad failure: the same tick's first poll happens in a
+        // real menu mode, then the game enters the wheel before its next pad
+        // read. A stale cached menu virtual pad must not release Triangle.
+        g_host->phase = OPENRAC_PLAY_MENU;
+        at<std::int32_t>(0x001A8BB0u) = 3;
+        tick();
+        g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
+        g_host->input.pointer_inside = 0; // captured cursor, not a menu pointer
+        read_pad();
+        at<std::int32_t>(0x001A8BB0u) = 4; // same input tick
+        const Report same_tick_wheel = read_pad();
+        CHECK(same_tick_wheel.held(kbm::kTriangle));
+
+        // The input-context latch may have blocked a held RMB when the
+        // game changes to mode 4. It must still hold Triangle there.
+        tick();
+        g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
+        const Report after_mode_change = read_pad();
+        CHECK(after_mode_change.held(kbm::kTriangle));
+
+        // Mode 0 after an intervening menu while still physically held
+        // should also send Triangle (only genuine RMB release stops it).
+        g_host->phase = OPENRAC_PLAY_PLAYING;
+        at<std::int32_t>(0x001A8BB0u) = 0;
+        tick();
+        g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
+        const Report back_to_play = read_pad();
+        CHECK(back_to_play.held(kbm::kTriangle));
+
         // A real RAC2 pause menu uses mode 3, not the wheel controls.
         at<std::int32_t>(0x001A8BB0u) = 3;
         tick();
