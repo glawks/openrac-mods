@@ -81,6 +81,24 @@ private:
         return false;
     }
 
+    // RAC2's menu-state globals have version-specific addresses. Both the
+    // current-screen pointer and the GUI instance are set once the game's
+    // interactive menu is active. Before that, its Press Start title needs
+    // Start rather than Cross. These are read-only checks of the game's state.
+    std::pair<std::uint32_t, std::uint32_t> frontend_state() const {
+        const auto disc = mod_.version();
+        const openrac::gaddr menu =
+            disc == "ntsc2" ? 0x001F27C0u : 0x001F2840u;
+        const openrac::gaddr gui =
+            disc == "pal" ? 0x001A8DACu
+            : disc == "ntsc2" ? 0x001A8D04u
+                               : 0x001A8CFCu;
+        return {
+            mod_.memory().read<std::uint32_t>(menu + 0x14u),
+            mod_.memory().read<std::uint32_t>(gui)
+        };
+    }
+
     void step(const openrac_input& in, const std::uint8_t* report) {
         const int phase = mod_.play_status().phase;
         const bool play = phase == OPENRAC_PLAY_PLAYING;
@@ -113,6 +131,34 @@ private:
                                 : scene ? Context::Cutscene
                                         : Context::Menu;
         held = latch_.filter(context, held);
+
+        // The port labels both the Press Start title and the actual menu
+        // FRONT_END, but they do not accept the same confirm button.
+        bool interactive_frontend = false;
+        if (phase == OPENRAC_PLAY_FRONT_END) {
+            const auto [screen, gui] = frontend_state();
+            interactive_frontend = screen != 0 && gui != 0;
+            const int state = interactive_frontend ? 1 : 0;
+            const bool confirm_held =
+                (held & (kbm::bit(Action::Jump) | kbm::bit(Action::MenuConfirm))) != 0;
+            if (state != last_frontend_) {
+                // A press that advances from Press Start must be released
+                // before it can choose New Game from the new menu.
+                if (last_frontend_ >= 0 && confirm_held)
+                    block_confirm_ = true;
+                last_frontend_ = state;
+                mod_.info(std::string("RAC2 front end: ")
+                    + (interactive_frontend ? "menu" : "Press Start")
+                    + " (screen=" + std::to_string(screen)
+                    + ", gui=" + std::to_string(gui) + ")");
+            }
+            if (!confirm_held) block_confirm_ = false;
+            if (block_confirm_)
+                held &= ~(kbm::bit(Action::Jump) | kbm::bit(Action::MenuConfirm));
+        } else {
+            last_frontend_ = -1;
+            block_confirm_ = false;
+        }
         const auto on = [&](Action a) {
             return (held & kbm::bit(a)) != 0;
         };
@@ -153,12 +199,29 @@ private:
             }
         } else if (menu) {
             v.held = kbm::buttons_for(Context::Menu, held, -1);
-            // Do not combine Start with Cross in the front-end menu.
-            // RAC2 uses Cross for selection, and an additional Start press
-            // was backing out of New Game / Load / Options instead.
-            // A title-screen Start shortcut must be implemented separately,
-            // after identifying the title's state rather than assuming every
-            // OPENRAC_PLAY_FRONT_END phase is the Press Start screen.
+            if (phase == OPENRAC_PLAY_FRONT_END) {
+                if (!interactive_frontend) {
+                    // The Press Start/title screen accepts Start, not Cross.
+                    v.held = static_cast<std::uint16_t>(v.held & ~kbm::kCross);
+                    if (on(Action::MenuConfirm) || on(Action::Jump) || on(Action::Pause))
+                        v.held = static_cast<std::uint16_t>(v.held | kbm::kStart);
+                } else {
+                    // In New Game / Load / Options, Cross selects and
+                    // Triangle goes back. Never press Start at the same
+                    // time as Cross. P remains an explicit Start fallback,
+                    // useful for checking the reported screen state.
+                    if (openrac_bind_held(&in, 19)) { // USB HID KeyP
+                        v.held = static_cast<std::uint16_t>(
+                            (v.held & ~kbm::kTriangle) | kbm::kStart);
+                    }
+                }
+                if (pressed(in, Action::MenuConfirm, false)
+                    || pressed(in, Action::Jump, false)) {
+                    mod_.info(std::string("RAC2 confirm: ")
+                        + (interactive_frontend ? "Cross/menu" : "Start/title")
+                        + (block_confirm_ ? " (waiting for release)" : ""));
+                }
+            }
             const std::array<Action, 4> directions = {
                 Action::MenuUp, Action::MenuDown,
                 Action::MenuLeft, Action::MenuRight
@@ -199,6 +262,8 @@ private:
     std::uint32_t tick_ = std::numeric_limits<std::uint32_t>::max();
     int previous_phase_ = -1;
     int requested_capture_ = -1;
+    int last_frontend_ = -1;
+    bool block_confirm_ = false;
     bool capture_ = true;
     bool ring_open_ = false;
     float ring_dead_zone_ = 30.0f;
