@@ -284,7 +284,10 @@ private:
         // The wheel's mode is the source of truth, not the play-status
         // classifier. It can change between pad polls within a host tick.
         const bool quick_select_mode = status.level >= 0 && mode == 4;
-        const bool play = phase == OPENRAC_PLAY_PLAYING || quick_select_mode;
+        // The game mode wins over a stale phase reading within a frame:
+        // mode 3 is a genuine menu, never ordinary gameplay.
+        const bool play = (phase == OPENRAC_PLAY_PLAYING && mode == 0)
+                          || quick_select_mode;
         const bool physical_wheel = quick_select_held(in);
         if (physical_wheel) {
             // Only log transitions, not every frame, so an intermittent
