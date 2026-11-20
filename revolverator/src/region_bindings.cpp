@@ -47,6 +47,8 @@ constexpr FunctionName functions[] = {
     {"FUN_0021a328","func_0021B298"}, // counterpart changes between discs; preserve the typed call boundary
     {"FUN_L00_0026c6e8","func_L00_0026D588"}, // resident native wrench-contact streak spawner, all levels
     {"FUN_L00_0026ced0","func_L00_0026DD70"}, // PartType22 native smoke.
+    {"FUN_L00_002d09b8","func_L00_002D1E68"}, // Native crate break.
+    {"FUN_L00_002d0538","func_L00_002D19E8"}, // Native crate contents and save bits.
     {"FUN_0021b858","func_0021C840"}, // counterpart changes between discs; preserve the typed call boundary
     {"FUN_0021c7a0","func_0021D7A0"},
     {"FUN_0021c9c8","func_0021D9C8"},
@@ -81,6 +83,8 @@ constexpr FunctionName functions[] = {
     {"FUN_L00_00257218","func_L00_00258250"},
     {"FUN_L00_00259a88","func_L00_0025AAC0"},
     {"FUN_L00_0025f090","func_L00_00260108"},
+    {"FUN_L00_0025f3e8","func_L00_00260460"}, // Native green explosion particles and flash.
+    {"FUN_001fa728","func_L00_00200290"}, // FastBSphereCheck, native shake visibility gate.
     {"FUN_L00_00260860","func_L00_002618D8"}, // native grant used by isolated QA fixtures
     {"FUN_L00_00263d40","func_L00_00264DB8"}, // native acquisition/level-up subtitle copies localized text
     {"FUN_L00_0029b680","func_L00_0029C9E8"},

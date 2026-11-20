@@ -3,6 +3,12 @@
 #pragma once
 
 namespace revolverator {
+// Only live, nonexplosive retail crate classes. The native update also serves
+// temporary class-change actors, which are damageable but cannot be latched.
+constexpr bool capturable_crate_class(unsigned klass) {
+    return klass==500||klass==501||klass==502||klass==511;
+}
+
 // CrateUpdate (NTSC-U FUN_L00_002cf218) handles the five authored crate
 // classes and its temporary 507..510 class changes. The broad native
 // "500..540" helper is for crate-stack membership, not damage eligibility:

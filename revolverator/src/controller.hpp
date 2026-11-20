@@ -33,8 +33,8 @@ struct Frame {
  bool equipped{},playing{},paused{},alive{},primary{},grounded{};
  Vec3 position{}; float yaw{};
 };
-struct Contact { Vec3 point{}; Target other{}; Vec3 normal{}; };
-enum class ImpactReason { Collision,FlightTimeout };
+enum class ImpactReason { Collision,FlightTimeout,Void };
+struct Contact { Vec3 point{}; Target other{}; Vec3 normal{}; ImpactReason reason=ImpactReason::Collision; };
 struct ImpactContext {
  ImpactReason reason=ImpactReason::Collision;
  Vec3 point{},normal{};
@@ -60,6 +60,7 @@ public:
  // on the floor; older adapters retain their safe cancellation restoration.
  virtual void drop(Target target){release(target,true);}
  virtual std::optional<Contact> sweep(Target target,Vec3 from,Vec3 to)=0;
+ virtual float flight_duration(Target,float normal_duration)const{return normal_duration;}
  virtual void impact(Target target,std::optional<Target> other,float charge)=0;
  // Default seams retain compatibility with adapters which only implement the
  // original controller. NativeWorld latches provenance and owns release recoil.

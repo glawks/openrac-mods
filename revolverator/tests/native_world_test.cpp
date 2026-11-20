@@ -39,7 +39,7 @@ struct Fixture {
  std::vector<Packet> packets;
  std::vector<openrac_hit> counterstrikes;
  std::vector<float> burst_sizes;
- unsigned stack_cursor=stack_base,stack_fail_size{},burst_calls{},allocations{},ray_calls{};
+ unsigned stack_cursor=stack_base,stack_fail_size{},burst_calls{},allocations{},ray_calls{},crate_breaks{},crate_drops{};
  float burst_scale{},burst_flash{},wall_x=10000;
  std::optional<float> floor_z;
  Vec3 floor_normal{0,0,1};
@@ -61,6 +61,11 @@ struct Fixture {
  static int take_ammo(int,int){return 1;}
  static void bone(unsigned,int,unsigned){}
  static void basis(unsigned,unsigned){}
+ static void break_crate(unsigned target,int explosive,unsigned contact){
+  require(!explosive&&!contact,"void break uses the ordinary isolated crate routine");
+  ++live->crate_breaks;live->put<unsigned char>(target+0x20,3);live->put(target+0x94,0u);
+ }
+ static void drop_crate(unsigned){++live->crate_drops;}
  static int set_state(int state,int param){
   live->state_requests.push_back({state,param});
   live->put(hero+0x2084,state);
@@ -102,6 +107,8 @@ struct Fixture {
   if(std::strcmp(name,"FUN_001efa68")==0)return reinterpret_cast<void*>(&ray);
   if(std::strcmp(name,"FUN_L00_002223f8")==0)return reinterpret_cast<void*>(&set_state);
   if(std::strcmp(name,"FUN_L00_0025f090")==0)return reinterpret_cast<void*>(&burst);
+  if(std::strcmp(name,"FUN_L00_002d09b8")==0)return reinterpret_cast<void*>(&break_crate);
+  if(std::strcmp(name,"FUN_L00_002d0538")==0)return reinterpret_cast<void*>(&drop_crate);
   return nullptr;
  }
  static const openrac_api* prepare(Fixture* fixture){
@@ -131,6 +138,9 @@ struct Fixture {
  Target enemy(unsigned index,unsigned klass,Vec3 centre){
   const auto at=pool+index*256;put(0x15ff20,std::max(get<unsigned>(0x15ff20),at+256));return actor(at,klass,centre,index+10);
  }
+ Target crate(unsigned index,unsigned klass,Vec3 centre){
+  const auto t=enemy(index,klass,centre);put<unsigned char>(t.address+0x20,1);return t;
+ }
  Frame frame()const{Frame f;f.epoch=1;f.equipped=f.alive=f.playing=f.grounded=true;return f;}
  void launch(Target projectile,bool golden=true,float charge=1,float multiplier=1){
   if(world.flying(projectile))world.discarded(projectile); // Explicitly end a prior synthetic fixture shot.
@@ -142,6 +152,65 @@ struct Fixture {
 };
 }
 int main(){
+ {
+  Fixture f;f.world.enable_crate_capture();f.floor_z=20.f;
+  const auto crate=f.crate(0,500,{1,0,21});
+  const auto upper=f.crate(1,500,{1,0,22});
+  f.put(crate.pvars+0xa0,upper.address);f.put(upper.pvars+0xa4,crate.address);
+  auto frame=f.frame();frame.position={0,0,20};f.world.observe_frame(frame);
+  require(f.world.find_target({0,0,21},0,2.8f)==crate&&f.world.capture(crate),"stack crate is captured before its neighbour settles");
+  f.world.move(crate,{0,0,23},0);
+  const Vec3 vacated{1,0,21};f.put(upper.address+0x10,vacated);f.put(upper.address,vacated*1024.f);
+  f.world.release(crate,true);
+  const auto placed=f.get<Vec3>(crate.address+0x10);
+  require(near(placed.z,20.375f)&&length_squared(placed-vacated)>.65f*.65f&&
+          f.get<unsigned>(crate.address+0x94)==7u&&near(f.get<Vec3>(upper.address+0x10).z,vacated.z),
+          "cancelling a carry does not restore a crate inside its settled stack neighbour");
+ }
+ {
+  Fixture f(true);
+  const auto lower=f.crate(0,500,{1.1f,0,20});
+  const auto crate=f.crate(1,511,{.8f,0,21});
+  const auto upper=f.crate(2,505,{1.1f,0,22});
+  f.put(lower.pvars+0xa0,crate.address);f.put(crate.pvars+0xa4,lower.address);
+  f.put(crate.pvars+0xa0,upper.address);f.put(upper.pvars+0xa4,crate.address);
+  require(!f.world.find_target({0,0,21},0,2.8f),"crate capture requires native capability");
+  require(f.world.enable_crate_capture(),"configured native crate functions enable capture");
+  require(!f.world.valid(upper)&&!f.world.capture(upper),"explosive crates stay under native impact rules");
+  require(f.world.find_target({0,0,21},0,2.8f)==crate&&f.world.capture(crate),"hold captures one ordinary crate");
+  require(f.world.frozen(crate.address)&&!f.world.frozen(lower.address)&&!f.world.frozen(upper.address),"only the selected crate is frozen");
+  require(f.get<unsigned>(crate.pvars+0xa0)==0&&f.get<unsigned>(crate.pvars+0xa4)==0&&
+          f.get<unsigned>(lower.pvars+0xa0)==upper.address&&f.get<unsigned>(upper.pvars+0xa4)==lower.address,
+          "removing the middle crate preserves both reciprocal stack links");
+  constexpr unsigned contact=0x70000;
+  f.put(contact+0x20,body);f.put(contact+0x24,0x30000u);f.put<unsigned short>(contact+0x2a,180);
+  require(!f.world.blocks_native_hit(lower,contact)&&!f.world.blocks_native_hit(upper,contact),"other crates retain the native melee hit");
+  f.launch(crate,true);f.world.move(crate,{5,0,11},0);
+  const auto tip=Vec3{5,0,11};
+  const float root=f.get<Vec3>(crate.address+0x10).z;
+  require(f.world.flight_duration(crate,1.4f)>1.4f,"a crate can fall past the ordinary enemy shot timeout");
+  const auto hit=f.world.sweep(crate,tip,tip+Vec3{0,0,8-root});
+  require(hit&&hit->reason==ImpactReason::Void,"collision-free crate detects the native fall height while flying");
+  f.world.move(crate,hit->point,0);f.world.release(crate,false);
+  require(near(f.get<Vec3>(crate.address+0x10).z,NativeCrates::void_height),"void boundary is based on crate root rather than attachment tip");
+  f.world.impact_result(crate,{hit->reason,hit->point,{},{},1});
+  f.world.impact_result(crate,{hit->reason,hit->point,{},{},1});
+  require(f.crate_breaks==1&&f.crate_drops==1&&f.burst_calls==0&&!f.world.frozen(crate.address),"void native break and contents are each applied once with no blast");
+ }
+ {
+  Fixture f(true);f.world.enable_crate_capture();f.floor_z=20.f;
+  const auto crate=f.crate(0,500,{1,0,21});const auto unrelated=f.enemy(1,459,{2.3f,0,21});
+  f.put(crate.pvars+0xa0,unrelated.address);
+  require(f.world.find_target({0,0,21},0,2.8f)==unrelated,"a malformed crate stack cannot write a noncrate neighbour");
+  f.put(crate.pvars+0xa0,0u);f.put<unsigned char>(crate.pvars+0xc8,1);
+  require(f.world.find_target({0,0,21},0,2.8f)==unrelated,"scripted respawning crates stay owned by the level");
+  f.put<unsigned char>(crate.pvars+0xc8,0);
+  auto frame=f.frame();frame.position={0,0,20};f.world.observe_frame(frame);
+  require(f.world.find_target({0,0,21},0,2.8f)==crate&&f.world.capture(crate),"ordinary crate can also be released early");
+  f.world.drop(crate);
+  require(!f.world.frozen(crate.address)&&f.get<unsigned>(crate.address+0x94)==7u&&f.counterstrikes.empty(),
+          "undercharged crate returns to the ground without a counterstrike");
+ }
  for(bool interrupted:{false,true}){
   Fixture f;
   const auto enemy=f.enemy(0,459,{1,0,.6f});

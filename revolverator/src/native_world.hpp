@@ -10,6 +10,7 @@
 #include "golden_impact.hpp"
 #include "release_recoil.hpp"
 #include "native_contact_sparks.hpp"
+#include "native_crates.hpp"
 #include "weapon_audio.hpp"
 #include <array>
 namespace revolverator {
@@ -28,6 +29,8 @@ public:
  void release(Target target,bool cancelled)override;
  void drop(Target target)override;
  std::optional<Contact> sweep(Target target,Vec3 from,Vec3 to)override;
+ float flight_duration(Target target,float normal_duration)const override;
+ bool enable_crate_capture(){return crates_.enable();}
  void impact(Target target,std::optional<Target> other,float charge)override;
  void observe_frame(const Frame& frame)override;
  bool can_launch()const override;
@@ -41,6 +44,7 @@ public:
  void animate(Motion motion)override;
  void set_audio(WeaponAudioSink* audio){audio_=audio;}
  void enemy_updated(unsigned moby);
+ void update_nanotech(unsigned orb,NativeCrates::Update next)const;
  Frame snapshot(bool primary,std::uint32_t epoch)const;
  void set_active(bool active){active_=active;if(!active)recoil_.cancel();}
  void set_golden(bool golden){golden_=golden;}
@@ -78,6 +82,7 @@ private:
  NativeAmmunition& ammunition_;
  NativeRotor& rotor_;
  NativeContactSparks sparks_;
+ NativeCrates crates_;
  WeaponAudioSink* audio_{};
  struct GroundContact {Target target{};unsigned updates{};} ground_contact_;
  std::optional<Vec3> contact_tip_;
@@ -88,7 +93,11 @@ private:
  using State=int(*)(int,int);
  using ScaleTicks=int(*)(int);
  using Burst=void(*)(unsigned,unsigned,int,float,float);
+ using GreenBurst=void(*)(unsigned,unsigned,float,float);
+ using SphereVisible=int(*)(unsigned,float);
  Allocate allocate_; Hit post_hit_;Ray ray_;Basis basis_;State state_;ScaleTicks scale_ticks_;Burst burst_;
+ GreenBurst green_burst_;
+ SphereVisible sphere_visible_;
  openrac_mod* mod_; bool trace_;
  bool active_=true;
  bool golden_=false;
@@ -115,6 +124,8 @@ private:
  void move_origin(const Lease& lease,Vec3 position,Vec3 angles);
  void restore_lease(Lease& lease,bool cancelled);
  std::optional<Vec3> drop_position(const Lease& lease)const;
+ bool crate_position_available(const Lease& lease,Vec3 origin)const;
+ Vec3 drop_fallback(const Lease& lease,bool try_ground=false)const;
  bool counterstrike(Target enemy);
  Flight* flight(Target target);
  const Flight* flight(Target target)const;
@@ -128,11 +139,13 @@ private:
  bool visible_from(Vec3 origin,Target target,unsigned ignore)const;
  bool clear_path(Vec3 from,Vec3 to,unsigned accepted_target,unsigned ignore)const;
  std::optional<Vec3> ray(Vec3 from,Vec3 to,unsigned ignore)const;
+ std::optional<Contact> sweep_impact(Target target,Vec3 from,Vec3 to);
  bool hit(Target target,float damage,Vec3 direction,unsigned attacker,bool explosive=false);
  bool submit_hit(Target target,float damage,Vec3 direction,const Shot& shot,bool explosive=false);
  void drain_hits();
  unsigned shot_attacker(const Shot& shot)const;
  void base_impact(Target target,std::optional<Target> other,float charge,const Shot& shot);
  void explode(Target target,const ImpactContext& result,const GoldenBlast& blast,const Shot& shot);
+ bool emit_golden_burst(Target target,Vec3 centre,const GoldenBlast& blast);
 };
 }

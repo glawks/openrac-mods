@@ -60,13 +60,18 @@ spinning. Releasing at full charge starts the native Walloper strike immediately
 The enemy detaches from the drill tip at the end of Ratchet's forward drive.
 An uninterrupted hold starts the same strike automatically after three seconds.
 A new press is accepted after the native attack has recovered.
+The development build can also lift and throw one ordinary crate. The strike
+still hits the other crates in a stack, and explosive crates keep their native
+detonation behavior. A thrown crate breaks on impact or at the native fall
+height over a void. Scripted respawning and platform-mounted crates stay under
+level control.
 Releasing early puts the enemy on the ground in front of Ratchet and restores its
 normal behavior. The **Immediate counterattack on an early drop** setting is off
 by default and can restore the immediate hit. See [charge release](docs/CHARGE_RELEASE.md)
 for the original release implementation.
-Ratchet moves at up to 50% of his native
-horizontal speed while spinning an enemy. The native Walloper lunge takes over
-when Ratchet starts the throw.
+Ratchet moves at up to 50% of his native horizontal speed while spinning an
+enemy. Crates allow full movement speed. Jumping is blocked while either target
+is held. The native Walloper lunge takes over when Ratchet starts the throw.
 
 | Property | Value |
 | --- | ---: |

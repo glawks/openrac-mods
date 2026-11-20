@@ -26,11 +26,13 @@ struct Stack {
  }
 };
 }
-NativeWorld::NativeWorld(const openrac_api* api,openrac_mod* mod,NativeAmmunition& ammunition,NativeRotor& rotor,GuestArena& arena):Memory(api),arm_(api,arena),ammunition_(ammunition),rotor_(rotor),sparks_(api),
+NativeWorld::NativeWorld(const openrac_api* api,openrac_mod* mod,NativeAmmunition& ammunition,NativeRotor& rotor,GuestArena& arena):Memory(api),arm_(api,arena),ammunition_(ammunition),rotor_(rotor),sparks_(api),crates_(api),
  allocate_(function<Allocate>("FUN_001ff288")),post_hit_(function<Hit>("FUN_L00_00259a88")),
  ray_(function<Ray>("FUN_001efa68")),basis_(function<Basis>("FUN_001fa030")),
  state_(function<State>("FUN_L00_002223f8")),scale_ticks_(reinterpret_cast<ScaleTicks>(find_function("FUN_001f96f8"))),
  burst_(function<Burst>("FUN_L00_0025f090")),
+ green_burst_(reinterpret_cast<GreenBurst>(find_function("FUN_L00_0025f3e8"))),
+ sphere_visible_(reinterpret_cast<SphereVisible>(find_function("FUN_001fa728"))),
  mod_(mod),trace_(api->setting_bool(mod,"trace")!=0){drop_counterattack_=api->setting_bool(mod,"drop_counterattack")!=0;}
 NativeWorld::~NativeWorld(){reset();}
 void NativeWorld::log(const char* s)const{api_->log(mod_,OPENRAC_LOG_INFO,s);}
@@ -42,7 +44,7 @@ bool NativeWorld::identity_valid(Target t)const{
  return t&&api_->loaded_level()==level_&&Memory::valid(t.address,256)&&token(t.address)==t
   &&read<unsigned char>(t.address+0x20)<0x80;
 }
-bool NativeWorld::valid(Target t)const{return identity_valid(t)&&capturable_class(int(t.klass));}
+bool NativeWorld::valid(Target t)const{return identity_valid(t)&&(capturable_class(int(t.klass))||crates_.live_crate(t));}
 void NativeWorld::each_enemy(const void* context,void(*fn)(const void*,Target),bool include_crates)const{
  const auto first=read<unsigned>(global(0x15ff18)),last=read<unsigned>(global(0x15ff20));
  if(!Memory::valid(first,256)||last<first||last-first>4096*256||!Memory::valid(last-256,256))return;
@@ -93,7 +95,7 @@ std::optional<Target> NativeWorld::find_target(Vec3 origin,float yaw,float reach
  Search search{this,origin,yaw,reach,{},std::numeric_limits<float>::max()};
  each_enemy(&search,+[](const void* ctx,Target target){
   auto& s=*const_cast<Search*>(static_cast<const Search*>(ctx));auto& w=*s.self;
-  if(w.flying(target))return;
+  if(w.flying(target)||(!capturable_class(int(target.klass))&&!w.crates_.can_carry(target)))return;
   const auto pos=w.read<Vec3>(target.address+0x10);const auto delta=pos-s.origin;
   const float distance=delta.x*delta.x+delta.y*delta.y;
   if(!finite(pos)||std::abs(delta.z)>2.f||distance>s.reach*s.reach)return;
@@ -120,12 +122,13 @@ std::optional<Target> NativeWorld::find_target(Vec3 origin,float yaw,float reach
    const Vec3 contact=hit_target?*obstruction:centre-approach*radius;
    w.site_={target,contact,approach};
   }
- });
+ },crates_.ready());
  return search.best;
 }
 bool NativeWorld::capture(Target t){
  if(lease_.target||!valid(t)||flying(t)||!can_launch())return false;
  if(!(site_.target==t)||!finite(site_.point))return false;
+ if(capturable_crate_class(t.klass)&&!crates_.detach(t))return false;
  lease_={};lease_.target=t;lease_.collision=read<unsigned>(t.address+0x94);
  lease_.disabled=read<unsigned>(t.address+0x98);lease_.origin=read<Vec3>(t.address+0x10);
  lease_.angles=read<Vec3>(t.address+0x40);lease_.spin_angle=read<float>(hero()+0x98);
@@ -160,6 +163,11 @@ bool NativeWorld::frozen(unsigned moby)const{
  for(const auto& entry:flights_)if(entry.lease.target.address==moby&&valid(entry.lease.target))return true;
  return false;
 }
+void NativeWorld::update_nanotech(unsigned orb,NativeCrates::Update next)const{
+ const auto owner=crates_.nanotech_owner(orb);
+ if(owner&&frozen(owner))crates_.update_carried_nanotech(orb,owner,next);
+ else next(orb);
+}
 void NativeWorld::move(Target t,Vec3 p,float yaw){
  auto* lease=owned_lease(t);
  if(!lease||!valid(t)||!finite(p)||!std::isfinite(yaw))return;
@@ -176,9 +184,10 @@ void NativeWorld::move_origin(const Lease& lease,Vec3 p,Vec3 angles){
 void NativeWorld::restore_lease(Lease& lease,bool cancelled){
  const auto t=lease.target;if(!t)return;
  if(valid(t)){
-  // A launched enemy is already in the world. Teardown restores its native
-  // AI/collision in place; only cancelling a carry returns it to its origin.
-  move_origin(lease,cancelled&&!lease.flying?lease.origin:read<Vec3>(t.address+0x10),lease.angles);
+  // A launched actor is already in the world. Only a cancelled carry needs
+  // a placement before native collision is restored.
+  const auto position=cancelled&&!lease.flying?drop_fallback(lease,true):read<Vec3>(t.address+0x10);
+  move_origin(lease,position,lease.angles);
   if(read<unsigned>(t.address+0x94)==0)write(t.address+0x94,lease.collision);
   if(read<unsigned>(t.address+0x98)==1)write(t.address+0x98,lease.disabled);
  }
@@ -192,9 +201,32 @@ void NativeWorld::release(Target t,bool cancelled){
  }else return;
  if(trace_)log(cancelled?"target cancelled; native ownership restored":"target released; native ownership restored");
 }
+bool NativeWorld::crate_position_available(const Lease& lease,Vec3 origin)const{
+ const auto centre=origin+rotate(rotation_from_euler(lease.angles),lease.local_sphere);
+ struct Occupancy {const NativeWorld& world;Target target;Vec3 centre;float radius;bool blocked;};
+ Occupancy query{*this,lease.target,centre,collision_radius(lease.target),false};
+ each_enemy(&query,+[](const void* context,Target other){
+  auto& q=*const_cast<Occupancy*>(static_cast<const Occupancy*>(context));
+  if(q.blocked||other==q.target||!destructible_crate_class(int(other.klass))||
+     !q.world.read<unsigned>(other.address+0x94)||q.world.read<unsigned>(other.address+0x98))return;
+  const float separation=q.radius+q.world.collision_radius(other)-.05f;
+  q.blocked=length_squared(q.world.damage_centre(other)-q.centre)<separation*separation;
+ },true);
+ return !query.blocked;
+}
+Vec3 NativeWorld::drop_fallback(const Lease& lease,bool try_ground)const{
+ if(!capturable_crate_class(lease.target.klass)||crate_position_available(lease,lease.origin))return lease.origin;
+ // A stack may have closed the gap. Prefer supported ground in live play,
+ // otherwise restore the crate in place so it can settle under native gravity.
+ if(try_ground&&last_frame_.playing&&last_frame_.alive&&read<int>(mode())==0){
+  if(const auto ground=drop_position(lease))return *ground;
+ }
+ return read<Vec3>(lease.target.address+0x10);
+}
 std::optional<Vec3> NativeWorld::drop_position(const Lease& lease)const{
  if(!valid(lease.target)||!finite(last_frame_.position)||!std::isfinite(last_frame_.yaw))return {};
  const float radius=collision_radius(lease.target);
+ const bool crate=capturable_crate_class(lease.target.klass);
  const float distance=std::clamp(radius+.65f,.9f,1.7f);
  const Vec3 upright_sphere=rotate(rotation_from_euler(lease.angles),lease.local_sphere);
  const float lift=std::max(0.f,radius-upright_sphere.z)+.025f;
@@ -211,7 +243,7 @@ std::optional<Vec3> NativeWorld::drop_position(const Lease& lease)const{
   const auto normal=read<Vec3>(level(0x173e80));
   if(!finite(normal)||normal.z<.6f||floor->z>last_frame_.position.z+1.f)continue;
   const Vec3 result{floor->x,floor->y,floor->z+lift};
-  if(finite(result))return result;
+  if(finite(result)&&(!crate||crate_position_available(lease,result)))return result;
  }
  return {};
 }
@@ -244,15 +276,14 @@ void NativeWorld::drop(Target t){
  if(!(lease_.target==t))return;
  if(!lease_valid()){lease_={};return;}
  Lease carried=lease_;lease_={};
- // The capture origin is the safe fallback if there is no supported ground
- // in front (for example, releasing over a void). Never invent a surface.
- const Vec3 ground=position.value_or(carried.origin);
- carried.angles.z=std::atan2(last_frame_.position.y-ground.y,last_frame_.position.x-ground.x);
+ const Vec3 ground=position?*position:drop_fallback(carried);
+ const bool crate=capturable_crate_class(t.klass);
+ if(!crate)carried.angles.z=std::atan2(last_frame_.position.y-ground.y,last_frame_.position.x-ground.x);
  move_origin(carried,ground,carried.angles);
  restore_lease(carried,false);
  if(audio_)audio_->emit(WeaponAudioCue::Drop);
- ground_contact_=position?GroundContact{t,0}:GroundContact{};
- const bool retaliation=drop_counterattack_&&counterstrike(t);
+ ground_contact_=position&&!crate?GroundContact{t,0}:GroundContact{};
+ const bool retaliation=!crate&&drop_counterattack_&&counterstrike(t);
  if(trace_){char message[240];std::snprintf(message,sizeof message,
   "undercharged drop target=%08x class=%u grounded=%d point=(%.5f,%.5f,%.5f) counterstrike=%d; native AI restored",
   t.address,t.klass,int(position.has_value()),ground.x,ground.y,ground.z,int(retaliation));log(message);}
@@ -278,6 +309,24 @@ void NativeWorld::discarded(Target t){
  if(auto* entry=flight(t)){restore_lease(entry->lease,true);*entry={};}
 }
 std::optional<Contact> NativeWorld::sweep(Target t,Vec3 from,Vec3 to){
+ if(const auto* entry=flight(t);entry&&entry->lease.target&&capturable_crate_class(t.klass)){
+  const float root=read<Vec3>(t.address+0x10).z;
+  const float end=root+to.z-from.z;
+  if(std::isfinite(root)&&std::isfinite(end)&&end<NativeCrates::void_height){
+   const float fraction=root>NativeCrates::void_height?(root-NativeCrates::void_height)/(root-end):0.f;
+   const Vec3 limit=from+(to-from)*fraction;
+   if(fraction>0.f)if(const auto hit=sweep_impact(t,from,limit))return hit;
+   return Contact{limit,{},{},ImpactReason::Void};
+  }
+ }
+ return sweep_impact(t,from,to);
+}
+float NativeWorld::flight_duration(Target t,float normal_duration)const{
+ // A no-contact crate keeps falling to the native void height. The longer
+ // watchdog only covers malformed terrain or out-of-world spawn coordinates.
+ return capturable_crate_class(t.klass)?16.f:normal_duration;
+}
+std::optional<Contact> NativeWorld::sweep_impact(Target t,Vec3 from,Vec3 to){
  const auto* active_flight=flight(t);
  if(active_flight&&active_flight->impact.golden_flight(t)){
   // Golden can collide with bosses and other damageable actors, but never
@@ -395,6 +444,10 @@ void NativeWorld::impact_result(Target target,const ImpactContext& result){
  const Shot shot=entry->shot;
  const auto blast=entry->impact.consume(target,result.reason);
  restore_lease(entry->lease,false);*entry={}; // Clear before native FX/damage reentry.
+ if(result.reason==ImpactReason::Void&&crates_.break_in_void(target)){
+  if(trace_)log("launched crate broke at the native fall limit");
+  return;
+ }
  if(audio_)audio_->emit(blast?WeaponAudioCue::GoldenImpact:WeaponAudioCue::Impact,blast?blast->charge:result.charge);
  if(blast)explode(target,result,*blast,shot);
  else base_impact(target,result.other,result.charge,shot);
@@ -418,14 +471,7 @@ void NativeWorld::explode(Target target,const ImpactContext& result,const Golden
   if(!finite(position)||length_squared(position-s.centre)>(s.radius+radius)*(s.radius+radius))return;
   s.plan->consider(candidate,position,radius,w.visible_from(s.centre,candidate,s.ignore));
  });
- // cart_burst emits particles/shake/light only, unlike the all-in-one native
- // explosion helper whose positive radius would also damage players and NPCs.
- Stack position(api_,16);
- if(position.at){
-  position.put(0,std::array<float,4>{centre.x,centre.y,centre.z,0});
-  burst_(target.address,position.at,-1,blast.visual_scale,blast.flash);
-  ++golden_explosions_;
- }
+ if(emit_golden_burst(target,centre,blast))++golden_explosions_;
  if(generation!=cancellation_generation_)return;
  const unsigned attacker=shot_attacker(shot);
  for(std::size_t i=0;i<plan.size();++i){
@@ -434,6 +480,32 @@ void NativeWorld::explode(Target target,const ImpactContext& result,const Golden
   submit_hit(hit.target,hit.damage,hit.direction,shot,true);
  }
  if(trace_){char text[240];std::snprintf(text,sizeof text,"Golden impact: charge=%.3f radius=%.2f damage=%.2f scale=%.2f targets=%zu source=%08x",blast.charge,blast.radius,blast.damage,blast.visual_scale,plan.size(),attacker);log(text);}
+}
+bool NativeWorld::emit_golden_burst(Target target,Vec3 centre,const GoldenBlast& blast){
+ Stack position(api_,16);
+ if(!position.at)return false;
+ position.put(0,std::array<float,4>{centre.x,centre.y,centre.z,0});
+ // The native colored burst owns particles and flash only. The existing
+ // target plan remains the sole dispatcher of damage for this explosion.
+ if(!green_burst_){
+  burst_(target.address,position.at,-1,blast.visual_scale,blast.flash);
+  return true;
+ }
+ green_burst_(target.address,position.at,blast.visual_scale,blast.flash);
+ // The green variant omits the stock burst's camera shake. Apply that same
+ // view check and scaled lifetime, without spawning the orange effect.
+ if(sphere_visible_&&scale_ticks_){
+  position.put(12,2.f);
+  if(sphere_visible_(position.at,10.f)!=-1){
+   const auto camera=level(0x166c80);
+   if(Memory::valid(camera,0x16c)){
+    write(camera+0x160,blast.visual_scale*.1f);
+    write(camera+0x168,scale_ticks_(20));
+   }
+  }
+ }
+ if(trace_)log("Golden impact uses the native green burst");
+ return true;
 }
 void NativeWorld::observe_frame(const Frame& frame){
  contact_tip_.reset();
@@ -461,7 +533,7 @@ void NativeWorld::enforce_release_recoil(){
 void NativeWorld::enforce_carry_speed(){
  // Only the current capture owns this cost. Launched enemies have separate
  // leases and must not keep Ratchet slowed while their flights finish.
- if(!active_||!lease_valid()||throw_strike_active()||!Memory::valid(hero(),0x22ac)||read<int>(mode())!=0||
+ if(!active_||!lease_valid()||capturable_crate_class(lease_.target.klass)||throw_strike_active()||!Memory::valid(hero(),0x22ac)||read<int>(mode())!=0||
     read<int>(hero()+0x22a8)<=0||read<int>(hero()+0x10b8)!=18||
     read<int>(hero()+0x10b4)!=2||read<unsigned char>(hero()+0x20a4)!=0)return;
  const auto player=token(body());
@@ -522,7 +594,7 @@ bool NativeWorld::blocks_native_hit(Target victim,unsigned hit)const{
  const auto origin=read<unsigned short>(hit+0x2a);
  if(throw_strike_active()&&flags==0x30000&&read<unsigned char>(hit+0x29)==3&&
     (origin==180||origin==2017||origin==2018)&&read<float>(hit+0x2c)==3.f)return identity_valid(victim);
- return valid(victim)&&origin!=2017&&(flags&0x30000)!=0;
+ return capturable_class(int(victim.klass))&&valid(victim)&&origin!=2017&&(flags&0x30000)!=0;
 }
 Frame NativeWorld::snapshot(bool primary,unsigned epoch)const{
  Frame f;f.epoch=epoch;f.seconds=read<float>(global(0x15ed7c));

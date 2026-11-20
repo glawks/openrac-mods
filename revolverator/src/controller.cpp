@@ -94,12 +94,12 @@ void Controller::advance_flights(const Frame& f){
   slot.elapsed+=f.seconds;slot.velocity.z-=12.f*f.seconds;
   const Vec3 next=slot.point+slot.velocity*f.seconds;
   const auto hit=world_.sweep(slot.target,slot.point,next);
-  if(hit||slot.elapsed>=settings_.flight_seconds){
+  if(hit||slot.elapsed>=world_.flight_duration(slot.target,settings_.flight_seconds)){
    const Flight flight=slot;slot={}; // Reentrant native death cannot retire this flight twice.
    const Vec3 point=hit&&finite(hit->point)?hit->point:flight.point;
    world_.move(flight.target,point,flight.yaw);
    world_.release(flight.target,false);
-   const ImpactContext result{hit?ImpactReason::Collision:ImpactReason::FlightTimeout,point,
+   const ImpactContext result{hit?hit->reason:ImpactReason::FlightTimeout,point,
     hit&&finite(hit->normal)?hit->normal:Vec3{},
     hit&&hit->other?std::optional<Target>{hit->other}:std::nullopt,flight.charge};
    world_.impact_result(flight.target,result);++counters_.impacts;finished=true;

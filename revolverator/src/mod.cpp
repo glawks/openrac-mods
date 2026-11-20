@@ -163,7 +163,7 @@ using PrepareSave=void(*)(int,int);
 using AutoSave=int(*)(int,int);
 using RestoreData=int(*)(unsigned,int,unsigned);
 using Restore=void(*)(int);
-Update walloper_original{},relay_original{},ammo_original{};Pad pad_original{};Load load_original{};
+Update walloper_original{},relay_original{},ammo_original{},nanotech_original{};Pad pad_original{};Load load_original{};
 Update gold_offer_original{};
 Advance motion_input_original{};void(*planar_velocity_original)(float){};
 GetHit hit_original{};Death death_original{};Advance animation_original{};
@@ -231,10 +231,16 @@ void pad(U32 address,U32 report,int size){
  const auto f=w.snapshot(false,session->epoch);
  const bool enabled=f.equipped&&f.playing&&!session->acquisition.active();
  session->primary=session->primary_button.update(f.paused,enabled,physical,(w.read<unsigned>(address+0x1a0)&0x20)!=0);
- if(f.paused||!enabled)return;
- for(unsigned off:{0x1a0u,0x1a4u,0x1a8u,0x1b0u,0x1b4u,0x1b8u,0x1c0u,0x1c4u,0x1c8u})w.write<unsigned>(address+off,w.read<unsigned>(address+off)&~0x20u);
+ if(!enabled)return;
+ constexpr unsigned circle=0x20u,cross=0x40u;
+ const bool carrying=f.alive&&w.lease_valid();
+ const unsigned masked=circle|(carrying?cross:0u);
+ // Keep the native held-button latch (0x348) so a held Cross does not count
+ // as a fresh press on release. Remove buffered jumps only during the carry.
+ for(unsigned off:{0x1a0u,0x1a4u,0x1a8u,0x1b0u,0x1b4u,0x1b8u,0x1c0u,0x1c4u,0x1c8u})w.write<unsigned>(address+off,w.read<unsigned>(address+off)&~masked);
  const unsigned index=w.read<unsigned short>(address+0x18e);
- if(index<30){const auto at=address+0x1e0+((index+29)%30)*4;w.write<unsigned>(at,w.read<unsigned>(at)&~0x20u);}
+ if(index<30){const auto at=address+0x1e0+((index+29)%30)*4;w.write<unsigned>(at,w.read<unsigned>(at)&~masked);}
+ if(carrying)for(unsigned i=0;i<30;++i){const auto at=address+0x1e0+i*4;w.write<unsigned>(at,w.read<unsigned>(at)&~cross);}
 }
 void relay(U32 element){
  if(session&&session->presentation.owns(element)){
@@ -275,6 +281,10 @@ void ammo_pickup(U32 moby){
  {ArsenalScope view(s.arsenal,arsenal::RevolveratorKey);
   s.ammunition.before_update(moby);ammo_original(moby);s.ammunition.after_update(moby);s.arsenal.commit();}
  s.restore_context();
+}
+void nanotech_ball(U32 moby){
+ if(session)session->world.update_nanotech(moby,nanotech_original);
+ else nanotech_original(moby);
 }
 void build_vendor(int skip){
  if(session)session->vendor.before_build();
@@ -636,6 +646,11 @@ extern "C" OPENRAC_MOD_EXPORT int openrac_mod_load(const openrac_api* api,openra
   enemy<6>("rac1.moby.moby294.update");enemy<7>("rac1.moby.moby573.update");enemy<8>("rac1.moby.moby1382.update");
   enemy<9>("rac1.moby.peckbot.update");enemy<10>("rac1.moby.extermibot.update");enemy<11>("rac1.moby.blarg_commander.update");
   enemy<12>("rac1.moby.sharkigator_35.update");enemy<13>("rac1.moby.sharkigator_1059.update");
+  enemy<14>("rac1.moby.crate.update");
+  hook("rac1.moby.nanotech_ball.update","void(u32)",reinterpret_cast<void*>(nanotech_ball),reinterpret_cast<void**>(&nanotech_original));
+  if(session->world.enable_crate_capture()){
+   api->log(mod,OPENRAC_LOG_INFO,"Revolverator can carry ordinary crates with native crate updates");
+  }
   session->xp.frame();
   if(!session->xp.compatible())throw std::runtime_error("Revolverator " REVOLVERATOR_VERSION " requires Weapon XP API v4 when Weapon XP is enabled; update both mod packages");
   if(api->on_frame(mod,+[](void*){if(session)session->frame();},nullptr))throw std::runtime_error("Frame registration failed");

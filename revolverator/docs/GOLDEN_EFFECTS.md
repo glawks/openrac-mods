@@ -28,6 +28,7 @@ from the original throw's velocity charge, which still reaches full strength
 after 1.6 seconds. Radius grows from 2.5 to 6 game units; maximum damage grows
 from 8 to 16 before optional XP bonuses. Damage falls to 35 percent at the rim.
 The native blast particles, light and camera response also grow with charge.
+The impact uses native green particles and glow in the Golden Bomb Glove palette.
 
 The shot stores its variant, charge, damage multiplier and source generation
 at release. Switching weapons does not change an enemy already in flight.
