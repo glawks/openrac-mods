@@ -99,11 +99,23 @@ private:
         };
     }
 
+    // RAC2 shows its weapon wheel in game mode 4. The generic play-status
+    // API reports this mode as MENU, even though the wheel still needs
+    // Triangle held, a captured mouse, and the left-stick selection.
+    openrac::gaddr game_mode_address() const {
+        return mod_.version() == "pal" ? 0x001A8C60u : 0x001A8BB0u;
+    }
+
     void step(const openrac_input& in, const std::uint8_t* report) {
         const int phase = mod_.play_status().phase;
-        const bool play = phase == OPENRAC_PLAY_PLAYING;
-        const bool menu = phase == OPENRAC_PLAY_MENU || phase == OPENRAC_PLAY_FRONT_END;
+        const bool quick_select_mode =
+            phase == OPENRAC_PLAY_MENU
+            && mod_.memory().read<std::int32_t>(game_mode_address()) == 4;
+        const bool play = phase == OPENRAC_PLAY_PLAYING || quick_select_mode;
+        const bool menu = (phase == OPENRAC_PLAY_MENU && !quick_select_mode)
+                          || phase == OPENRAC_PLAY_FRONT_END;
         const bool scene = phase == OPENRAC_PLAY_SCENE;
+        const int input_phase = quick_select_mode ? OPENRAC_PLAY_PLAYING : phase;
 
         const bool want_capture = capture_ && play && in.focused && !in.overlay;
         if (requested_capture_ != static_cast<int>(want_capture)) {
@@ -112,13 +124,13 @@ private:
         }
 
         // No carryover presses when changing gameplay, scene or menu.
-        if (phase != previous_phase_) {
+        if (input_phase != previous_phase_) {
             keys_ = kbm::KeyStick{};
             look_.reset();
             ring_.reset();
             ring_open_ = false;
             repeats_ = {};
-            previous_phase_ = phase;
+            previous_phase_ = input_phase;
         }
 
         kbm::ActionSet held = 0;
