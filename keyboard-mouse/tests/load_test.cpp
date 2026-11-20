@@ -823,8 +823,14 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         tick();
         at<std::int32_t>(kMainList + 0x16Cu) = 2;
         point_at(2);
+        g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
         const Report hover_settled = read_pad();
         CHECK(!hover_settled.held(kbm::kDown));
+        CHECK(!hover_settled.held(kbm::kCross)); // click while prior d-pad releases
+        tick();
+        point_at(2);
+        const Report settled_click = read_pad();
+        CHECK(settled_click.held(kbm::kCross));
 
         // A click on New Game while Options is selected must wait for the
         // highlight to move to row 0 rather than confirm Options.
@@ -881,8 +887,10 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(!submenu.held(kbm::kDown));
 
         at<std::uint32_t>(kMainItems + 2u * 20u + 12u) = 0;
-        at<std::uint32_t>(kMenuCurrent) = 0;
-        at<std::uint32_t>(kGuiInstance) = 0;
+        // Restore the earlier simulated active main menu for the existing
+        // RAC2 directional-navigation test later in the same suite.
+        at<std::uint32_t>(kMenuCurrent) = 0x00160000u;
+        at<std::uint32_t>(kGuiInstance) = 0x00170000u;
 
         std::fprintf(stderr, "DEBUG RAC2 front end\n");
         // RAC2 wheel is gameplay mode 4, although play_status calls it MENU.

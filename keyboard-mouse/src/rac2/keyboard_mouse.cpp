@@ -332,7 +332,7 @@ private:
             return;
         }
 
-        if (click && hit.selected != hit.target) {
+        if (click && (hit.selected != hit.target || hover_release_)) {
             hover_pending_ = hit.target;
             hover_pending_ticks_ = 36; // allow animation / multi-row movement
         }
