@@ -733,6 +733,34 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(start_fallback.held(kbm::kStart));
         CHECK(!start_fallback.held(kbm::kTriangle));
         CHECK(!start_fallback.held(kbm::kCross));
+
+        // RAC2 wheel is gameplay mode 4, although play_status calls it MENU.
+        // Holding right-click across the transition must keep Triangle down,
+        // capture intact, and let the mouse steer the wheel instead of
+        // immediately closing it.
+        g_host->phase = OPENRAC_PLAY_PLAYING;
+        at<std::int32_t>(0x001A8BB0u) = 0;
+        tick();
+        g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
+        read_pad();
+        g_host->phase = OPENRAC_PLAY_MENU;
+        at<std::int32_t>(0x001A8BB0u) = 4;
+        tick();
+        g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
+        g_host->input.mouse_dx = 80.0f;
+        const Report wheel = read_pad();
+        CHECK(wheel.held(kbm::kTriangle));
+        CHECK(wheel.bytes[4] > 0x80);
+        CHECK(g_host->capture == 1);
+
+        // A real RAC2 pause menu uses mode 3, not the wheel controls.
+        at<std::int32_t>(0x001A8BB0u) = 3;
+        tick();
+        g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
+        const Report pause_menu = read_pad();
+        CHECK(!pause_menu.held(kbm::kTriangle));
+        at<std::int32_t>(0x001A8BB0u) = 0;
+        g_host->phase = OPENRAC_PLAY_PLAYING;
     }
 
     // An unsupported third game is refused; restore the RAC1 mock for other tests.
