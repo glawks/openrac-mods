@@ -76,6 +76,7 @@ struct Host {
 
     // The level the host reports as loaded, -1 for none.
     int level = 0;
+    int phase = OPENRAC_PLAY_PLAYING;
 
     // The input of the tick the port would hand the mod.
     openrac_input input{};
@@ -338,6 +339,16 @@ void host_stack_pop(openrac_gaddr saved) {
     g_host->stack_pointer = saved;
 }
 
+// RAC2's game-agnostic phase API used by the experimental input path.
+int host_play_status(openrac_play_status* out) {
+    if (out == nullptr || out->size < sizeof(*out)) return OPENRAC_HOOK_UNKNOWN;
+    out->phase = g_host->phase;
+    out->level = g_host->level;
+    out->levels = 28;
+    out->loads = 1;
+    return OPENRAC_HOOK_OK;
+}
+
 // Returns the input of the tick under test.
 const openrac_input* host_input() {
     return &g_host->input;
@@ -384,6 +395,7 @@ openrac_api make_api() {
     api.input = host_input;
     api.take_input = host_take_input;
     api.capture_mouse = host_capture_mouse;
+    api.play_status = host_play_status;
     return api;
 }
 
@@ -626,7 +638,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
     info.size = sizeof info;
     query(&info);
     CHECK(
-        std::strcmp(info.id, "keyboard-mouse") == 0 && info.api_major == 1 && info.api_minor == 3
+        std::strcmp(info.id, "keyboard-mouse") == 0 && info.api_major == 1 && info.api_minor == 8
     );
 
     // Load once on each disc: the NTSC-U one, then the PAL one.
@@ -646,10 +658,33 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(g_host->functions[5] == disc().map_screen);
     }
 
-    // Another game is refused.
+    // RAC2 loads without RAC1's camera hook or disc-specific function addresses.
     {
         openrac_api other = make_api();
         other.game = "rac2";
+        other.version = "ntsc";
+        g_host->camera_hook = nullptr;
+        g_host->taken = 0;
+        g_host->functions.clear();
+        g_host->failed.clear();
+        CHECK(load(&other, reinterpret_cast<openrac_mod*>(1)) == 0);
+        CHECK(g_host->failed.empty() && g_host->pad != nullptr);
+        CHECK(g_host->camera_hook == nullptr && g_host->functions.empty());
+        CHECK(g_host->taken == (OPENRAC_INPUT_KEYBOARD | OPENRAC_INPUT_MOUSE));
+
+        g_host->phase = OPENRAC_PLAY_PLAYING;
+        tick();
+        hold(OPENRAC_KEY_W);
+        press(OPENRAC_KEY_SPACE);
+        const Report r = read_pad();
+        CHECK(r.held(kbm::kCross));
+        CHECK(r.bytes[5] < 0x80);
+    }
+
+    // An unsupported third game is refused; restore the RAC1 mock for other tests.
+    {
+        openrac_api other = make_api();
+        other.game = "rac3";
         g_host->failed.clear();
         CHECK(load(&other, reinterpret_cast<openrac_mod*>(1)) != 0 && !g_host->failed.empty());
         g_host->failed.clear();
