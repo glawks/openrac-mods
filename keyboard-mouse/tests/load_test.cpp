@@ -77,6 +77,8 @@ struct Host {
     // The level the host reports as loaded, -1 for none.
     int level = 0;
     int phase = OPENRAC_PLAY_PLAYING;
+    int equipped_id = -1;
+    int equip_calls = 0;
 
     // The input of the tick the port would hand the mod.
     openrac_input input{};
@@ -257,8 +259,16 @@ int host_on_pad(openrac_mod*, openrac_pad_fn fn, void* user) {
 }
 
 // Returns the game's function by name: only the running disc's own names are found.
+int game_item_equip(std::int32_t item) {
+    g_host->equipped_id = item;
+    ++g_host->equip_calls;
+    return 1;
+}
+
 void* host_function(const char* name) {
     g_host->functions.emplace_back(name);
+    if (std::strcmp(name, "Item_Equip") == 0)
+        return reinterpret_cast<void*>(&game_item_equip);
     const kbm::Disc& d = disc();
 
     // The camera reset's cosine.
@@ -761,6 +771,53 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(!pause_menu.held(kbm::kTriangle));
         at<std::int32_t>(0x001A8BB0u) = 0;
         g_host->phase = OPENRAC_PLAY_PLAYING;
+
+        // RAC2's saved quick-select slots and owned bytes drive the number
+        // keys. Never replace item state directly: use the game's Item_Equip.
+        for (int i = 0; i < 8; ++i)
+            at<std::int32_t>(0x001A73B8u + static_cast<std::uint32_t>(4 * i)) = 0;
+        at<std::int32_t>(0x001A73B8u) = 15;
+        at<std::int32_t>(0x001A73BCu) = 10;
+        at<std::int32_t>(0x001A73C0u) = 16;
+        at<std::uint8_t>(0x001A7AF8u + 15u) = 1;
+        at<std::uint8_t>(0x001A7AF8u + 10u) = 1;
+        at<std::uint8_t>(0x001A7AF8u + 16u) = 1;
+        at<std::int32_t>(0x00189E20u + 0x1220u + 0x28u) = 15;
+        g_host->equipped_id = -1;
+        tick();
+        press(31);  // USB HID Digit2
+        read_pad();
+        CHECK(g_host->equipped_id == 10);
+
+        tick();
+        g_host->input.wheel_y = -1.0f;  // next quick-select slot
+        read_pad();
+        CHECK(g_host->equipped_id == 16);
+
+        // No weapon switching while inside the wheel / a menu.
+        g_host->phase = OPENRAC_PLAY_MENU;
+        at<std::int32_t>(0x001A8BB0u) = 4;
+        tick();
+        press(30); // Digit1
+        read_pad();
+        CHECK(g_host->equipped_id == 16);
+        at<std::int32_t>(0x001A8BB0u) = 0;
+
+        // Menu cursor motion sends a d-pad tap, and clicking confirms
+        // the highlighted entry (not yet pixel-precise hover targeting).
+        g_host->phase = OPENRAC_PLAY_FRONT_END;
+        tick();
+        g_host->input.pointer_inside = 1;
+        g_host->input.mouse_dy = 70.0f;
+        const Report mouse_nav = read_pad();
+        CHECK(mouse_nav.held(kbm::kDown));
+
+        tick();
+        g_host->input.pointer_inside = 1;
+        g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
+        const Report click = read_pad();
+        CHECK(click.held(kbm::kCross));
+        CHECK(!click.held(kbm::kStart));
     }
 
     // An unsupported third game is refused; restore the RAC1 mock for other tests.
