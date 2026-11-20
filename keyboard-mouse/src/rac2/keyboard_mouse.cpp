@@ -37,7 +37,7 @@ struct MenuMotion {
         cooldown = 0;
     }
 
-    std::uint16_t step(float dx, float dy) {
+    std::uint16_t step(float dx, float dy, float pixels_per_step) {
         if (!std::isfinite(dx) || !std::isfinite(dy)) {
             reset();
             return 0;
@@ -49,29 +49,31 @@ struct MenuMotion {
             return 0;
         }
 
+        const float limit = std::clamp(pixels_per_step, 30.0f, 200.0f);
+        const float horizontal_limit = limit * 1.8f;
         const float ax = std::fabs(dx), ay = std::fabs(dy);
         if (ay > 0.0f && (ay >= ax * 0.45f || ax < 12.0f)) {
-            vertical = std::clamp(vertical + std::clamp(dy, -70.0f, 70.0f),
-                                  -70.0f, 70.0f);
+            vertical = std::clamp(vertical + std::clamp(dy, -limit, limit),
+                                  -limit, limit);
             horizontal = 0.0f;
         } else if (ax >= 24.0f && ax >= ay * 3.0f) {
             // Only a deliberate, mostly horizontal motion changes a value.
-            horizontal = std::clamp(horizontal + std::clamp(dx, -90.0f, 90.0f),
-                                    -120.0f, 120.0f);
+            horizontal = std::clamp(horizontal + std::clamp(dx, -horizontal_limit, horizontal_limit),
+                                    -horizontal_limit, horizontal_limit);
             vertical = 0.0f;
         } else {
             // Ignore small sideways drift; retain modest vertical intent.
             vertical = std::clamp(vertical + std::clamp(dy, -15.0f, 15.0f),
-                                  -70.0f, 70.0f);
+                                  -limit, limit);
             horizontal *= 0.5f;
         }
-        if (std::fabs(vertical) >= 70.0f) {
+        if (std::fabs(vertical) >= limit) {
             const auto direction = vertical > 0.0f ? kbm::kDown : kbm::kUp;
             vertical = horizontal = 0.0f;
             cooldown = 12;  // release the button before another gesture
             return direction;
         }
-        if (std::fabs(horizontal) >= 120.0f) {
+        if (std::fabs(horizontal) >= horizontal_limit) {
             const auto direction = horizontal > 0.0f ? kbm::kRight : kbm::kLeft;
             vertical = horizontal = 0.0f;
             cooldown = 12;
@@ -97,6 +99,7 @@ public:
         look_settings_.invert_y = mod.setting<bool>("invert_y");
         capture_ = mod.setting<bool>("capture_cursor");
         menu_mouse_ = mod.setting<bool>("menu_mouse");
+        menu_step_pixels_ = static_cast<float>(mod.setting<double>("menu_step_pixels"));
         ring_dead_zone_ =
             static_cast<float>(mod.setting<double>("quick_select_dead_zone"));
     }
@@ -254,29 +257,55 @@ private:
         }
     }
 
+    // A wheel event can contain several notches: honour configured bindings.
+    int steps_pressed(const openrac_input& in, Action action) const {
+        if (!in.focused || in.overlay || !in.captured) return 0;
+        int count = 0;
+        for (int bind : binds_.of(action)) {
+            if (!bind) continue;
+            const float wheel = openrac_bind_wheel(&in, bind);
+            if (wheel >= 0.5f)
+                count = std::max(count, std::clamp(static_cast<int>(std::ceil(wheel)), 1, 4));
+            else if (openrac_bind_pressed(&in, bind))
+                count = std::max(count, 1);
+        }
+        return count;
+    }
+
     void weapon_keys(const openrac_input& in) {
         if (!in.focused || in.overlay || !in.captured) return;
         // Only in actual on-foot gameplay. Mode 4 is the weapon wheel, and
         // another mode can be a pause menu, vendor or dialog.
         if (mod_.memory().read<std::int32_t>(game_mode_address()) != 0) return;
-        const auto slots = quick_slots();
+        auto slots = quick_slots();
         for (int i = 0; i < kbm::kQuickSelectSlots; ++i) {
             const Action action = static_cast<Action>(static_cast<int>(Action::Weapon1) + i);
-            if (pressed(in, action, true)) {
-                equip_item(slots[static_cast<std::size_t>(i)], in.tick);
-                return;
-            }
+            if (!pressed(in, action, true)) continue;
+            const int item = slots[static_cast<std::size_t>(i)];
+            mod_.info("RAC2 weapon key " + std::to_string(i + 1)
+                + ": item=" + std::to_string(item)
+                + (item_owned(item) ? " owned" : " empty/unowned"));
+            if (item_owned(item)) equip_item(item, in.tick);
+            return;
         }
-        const int direction = pressed(in, Action::WeaponNext, true) ? 1
-                            : pressed(in, Action::WeaponPrev, true) ? -1
-                                                                     : 0;
-        if (!direction) return;
+        // Ignore items in the ring that are not owned or no longer valid.
+        for (auto& item : slots)
+            if (!item_owned(item)) item = 0;
+        const int forward = steps_pressed(in, Action::WeaponNext);
+        const int backward = steps_pressed(in, Action::WeaponPrev);
+        if (forward == backward) return;
+        const int direction = forward > backward ? 1 : -1;
+        const int count = std::max(forward, backward);
         int current = currently_equipped();
-        // The game's equip request may take a few frames to reach the item
-        // slot: successive wheel notches advance from the pending request.
         if (requested_item_ > 0 && in.tick - requested_tick_ < 12)
             current = requested_item_;
-        const int next = kbm::cycle_item(slots, current, direction);
+        int next = current;
+        for (int n = 0; n < count; ++n)
+            next = kbm::cycle_item(slots, next, direction);
+        mod_.info("RAC2 weapon wheel: " + std::to_string(count)
+            + (direction > 0 ? " next" : " previous")
+            + ", current=" + std::to_string(current)
+            + ", requested=" + std::to_string(next));
         if (next > 0 && next != current) equip_item(next, in.tick);
     }
 
@@ -478,7 +507,7 @@ private:
                 // No queued pulses: one menu direction every twelve ticks at
                 // most; big swipes and lateral jitter cannot skip many rows.
                 v.held = static_cast<std::uint16_t>(
-                    v.held | menu_motion_.step(dx, in.mouse_dy));
+                    v.held | menu_motion_.step(dx, in.mouse_dy, menu_step_pixels_));
             } else {
                 menu_motion_.reset();
             }
@@ -507,6 +536,7 @@ private:
     bool block_confirm_ = false;
     bool capture_ = true;
     bool menu_mouse_ = true;
+    float menu_step_pixels_ = 100.0f;
     bool ring_open_ = false;
     bool warned_equip_ = false;
     int last_wheel_mode_ = -2;
@@ -526,7 +556,7 @@ void load(openrac::Mod& mod) {
     mod.on_pad([keyboard](int port, std::uint8_t* report, int size) {
         keyboard->on_pad(port, report, size);
     });
-    mod.info("RAC2 experimental keyboard/mouse (Quick Select hold bypasses context latch; mode logging enabled)");
+    mod.info("RAC2 experimental keyboard/mouse (weapon diagnostics and adjustable menu steps)");
 }
 
 }  // namespace kbm_rac2

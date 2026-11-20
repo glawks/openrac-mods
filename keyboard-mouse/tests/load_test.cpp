@@ -213,6 +213,7 @@ double setting_float(openrac_mod*, const char* key) {
         return 0.0;  // at once, for the test
     }
 
+    if (std::strcmp(key, "menu_step_pixels") == 0) return 100.0;
     // A dead zone of 30 pixels for the Quick Select.
     if (std::strcmp(key, "quick_select_dead_zone") == 0) {
         return 30.0;
@@ -864,13 +865,36 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         read_pad();
         CHECK(g_host->equipped_id == 16);
 
+        // Two notches should advance twice and call equip once.
+        tick();
+        g_host->input.wheel_y = -2.0f;
+        read_pad();
+        CHECK(g_host->equipped_id == 10);
+        tick();
+        press(30); // Digit1 takes priority over wheel
+        g_host->input.wheel_y = -1.0f;
+        read_pad();
+        CHECK(g_host->equipped_id == 15);
+        const int before_empty = g_host->equip_calls;
+        tick();
+        press(37); // Digit8 is unassigned
+        read_pad();
+        CHECK(g_host->equip_calls == before_empty);
+        at<std::int32_t>(0x001A73C4u) = 19; // unowned slot
+        tick();
+        g_host->input.wheel_y = -1.0f;
+        read_pad();
+        CHECK(g_host->equipped_id == 10);
+        CHECK(g_host->equip_calls == before_empty + 1);
+        at<std::int32_t>(0x001A73C4u) = 0;
+
         // No weapon switching while inside the wheel / a menu.
         g_host->phase = OPENRAC_PLAY_MENU;
         at<std::int32_t>(kRac2LevelMode) = 4;
         tick();
         press(30); // Digit1
         read_pad();
-        CHECK(g_host->equipped_id == 16);
+        CHECK(g_host->equipped_id == 10);
         at<std::int32_t>(kRac2LevelMode) = 0;
 
         // Menu cursor motion sends a d-pad tap, and clicking confirms
@@ -879,10 +903,18 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         tick();
         g_host->input.pointer_inside = 1;
         g_host->input.mouse_dx = 8.0f; // lateral jitter must not stop vertical movement
-        g_host->input.mouse_dy = 70.0f;
+        g_host->input.mouse_dy = 110.0f;
         const Report mouse_nav = read_pad();
         CHECK(mouse_nav.held(kbm::kDown));
         CHECK(!mouse_nav.held(kbm::kLeft) && !mouse_nav.held(kbm::kRight));
+
+        tick();
+        g_host->input.pointer_inside = 1;
+        g_host->input.mouse_dx = 14.0f;
+        g_host->input.mouse_dy = 3.0f;
+        const Report jitter = read_pad();
+        CHECK(!jitter.held(kbm::kLeft) && !jitter.held(kbm::kRight));
+        CHECK(!jitter.held(kbm::kDown));
 
         // Even a giant swipe cannot scroll more than one row immediately.
         tick();
@@ -898,7 +930,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         tick();
         g_host->input.pointer_inside = 1;
         g_host->input.mouse_dx = 6.0f;
-        g_host->input.mouse_dy = 75.0f;
+        g_host->input.mouse_dy = 110.0f;
         const Report second_step = read_pad();
         CHECK(second_step.held(kbm::kDown));
 

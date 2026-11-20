@@ -20,14 +20,17 @@ confirmed working in-game. **Quick Select mode 4** is now treated as
 gameplay input, so holding right click should keep the wheel open while
 mouse movement selects a direction. This must still be confirmed in-game.
 
-The alpha also adds **1–8 Quick Select slot hotkeys** and **wheel up/down**
+The alpha includes **1–8 Quick Select slot hotkeys** and **wheel up/down**
 to cycle those eight assigned slots, using RAC2's `Item_Equip` function
-and checking ownership. These are test features, not yet verified in-game.
+and checking ownership. Alpha.6 adds multi-notch cycling, skips unowned
+items and logs `RAC2 weapon key` or `RAC2 weapon wheel` on input.
+These features still need in-game testing.
 The game itself retains control of item selection and weapon behavior.
 
 **Menus:** mouse motion makes deliberate d-pad navigation steps, with
 small sideways jitter ignored and a 12-tick delay between steps so long drags
-do not skip many rows. Deliberate horizontal swipes can step left/right for
+do not skip many rows. You can adjust **RAC2 mouse menu: pixels per step** in
+the mod settings (default 100; higher is slower). Deliberate horizontal swipes can step left/right for
 choice settings. Left-click confirms the highlighted option. This is *not
 yet pixel-accurate hover/click targeting*.
 
