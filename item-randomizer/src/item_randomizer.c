@@ -1177,6 +1177,9 @@ static int aridia_reward_collected(void) {
 }
 #include "aridia_access.inc"
 
+static int blarg_o2_access_active(void) { return rando_on(); }
+#include "blarg_access.inc"
+
 
 static void bob_update(openrac_gaddr moby) {
     run_shown(s_bob_update, moby, ITEM_THRUSTER_PACK);
@@ -1566,16 +1569,16 @@ static void guard_empty_vendor(void) {
     }
 }
 
-/* Block an empty Gadgetron PDA vendor before the game builds its menu. */
+/* Block every empty vendor at the opening boundary, including after its last purchase. */
 static void open_vendor_menu_hook(uint32_t moby) {
-    if (moby == 0 && rando_on() && s_disc != NULL) {
+    if (rando_on() && s_disc != NULL) {
         uint8_t real[VENDOR_STOCK_SIZE];
         uint8_t shown[VENDOR_STOCK_SIZE];
 
         memcpy(real, byte_at(s_disc->vendor_stock), sizeof real);
         vendor_stock_shown(real, shown);
 
-        int has_pda_stock = 0;
+        int has_stock = 0;
         uint8_t* item_info = level_byte_at(s_disc->item_price_table);
 
         for (int i = 0; i < VENDOR_STOCK_SIZE && shown[i] != STOCK_END; ++i) {
@@ -1583,25 +1586,30 @@ static void open_vendor_menu_hook(uint32_t moby) {
             if (item >= VENDOR_ITEM_COUNT) {
                 continue;
             }
+            /* Physical vendors sell unchecked reward rows; the PDA sells ammunition only. */
+            if (moby != 0 && !(shown[i] & STOCK_AMMO)) {
+                has_stock = 1;
+                break;
+            }
             uint16_t ammo_supported;
             memcpy(&ammo_supported, item_info + item * 0x18 + 0x08, sizeof ammo_supported);
 
             if ((shown[i] & STOCK_AMMO) && ammo_supported != 0) {
-                has_pda_stock = 1;
+                has_stock = 1;
                 break;
             }
         }
 
-        for (int item = 0; item < VENDOR_ITEM_COUNT && !has_pda_stock; ++item) {
+        for (int item = 0; item < VENDOR_ITEM_COUNT && !has_stock; ++item) {
             uint16_t ammo_supported;
             memcpy(&ammo_supported, item_info + item * 0x18 + 0x08, sizeof ammo_supported);
 
             if (*owned(item) != 0 && ammo_supported != 0) {
-                has_pda_stock = 1;
+                has_stock = 1;
             }
         }
 
-        if (!has_pda_stock) {
+        if (!has_stock) {
             return;
         }
     }
@@ -1876,10 +1884,22 @@ static int take(int result, const char* point) {
         #point                                                                                     \
     )
 
+/* Retail glide input checks Heli-Pack ownership even with the Thruster-Pack equipped.
+ * Borrow that flag only during movement; the existing swap/save scopes keep inventory real. */
+static void (*s_hero_update)(void);
+static void hero_update(void) {
+    const int borrow = rando_on() && *owned(ITEM_THRUSTER_PACK) && !*owned(ITEM_HELI_PACK);
+    if (borrow) swap_push(owned(ITEM_HELI_PACK), -2);
+    s_hero_update();
+    if (borrow) swap_pop();
+}
+
 /* Takes every hook point the mod needs; 1 when all are in place, 0 (the port told) when not. */
 static int install_hooks(void) {
+    if (!take(s_api->hook(s_mod, "rac1.player.update", "void()", (void*)hero_update,
+                          (void**)&s_hero_update), "rac1.player.update")) return 0;
     s_gold_case_present = acquisition_case;
-    if (!aridia_access_hooks() || !presentation_hooks() || !acquisition_hooks() || !reward_extra_hooks()) {
+    if (!aridia_access_hooks() || !blarg_access_hooks() || !presentation_hooks() || !acquisition_hooks() || !reward_extra_hooks()) {
         return 0;
     }
     /* The reward presentation, when it takes the dialog and text hooks, routes NPC prompts to
@@ -2089,6 +2109,11 @@ static void on_party_rules(void* user, const void* data, uint32_t size) {
             log_line(OPENRAC_LOG_INFO, "out of the party: this game's own seed counts again");
         }
 
+        return;
+    }
+
+    /* 0 bytes: this game took over as the party's host. It keeps playing the party's seed. */
+    if (size == 0) {
         return;
     }
 
