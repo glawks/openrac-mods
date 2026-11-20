@@ -127,6 +127,7 @@ struct Session {
   if(acquisition.active()){primary=false;f=world.snapshot(false,epoch);}
   world.set_drill_head_scale(visuals.controller().radial_scale(),visuals.controller().axial_scale());
   controller.tick(f);
+  world.update_gag_camera(f);
   if(!holding_enemy(controller.attack_phase())&&!f.paused)world.pose(controller.attack_phase(),controller.spin_angle());
   const auto held=world.weapon();
   const bool gag=world.gag_active();

@@ -16,10 +16,12 @@ struct CaptureGagProfile {
     float reach, height, lift_time, hang_time, fall_time;
     const char* landing_rumble;
     unsigned landing_sound_class;
+    float subject_height;
+    bool turn_toward_hero;
 };
 
 inline constexpr CaptureGagProfile snagglebeast_crush{
-    7, 1106, 1, 7, 0x20, 4.8f, .92f, .24f, .22f, .24f, "FUN_L07_003120d8", 0x416
+    7, 1106, 1, 7, 0x20, 4.8f, 1.52f, .34f, .34f, .26f, "FUN_L07_003120d8", 0x416, 8.7f, true
 };
 
 class NativeCaptureGag final : public Memory {
@@ -34,6 +36,9 @@ public:
     bool owns_hero(Target actor) const;
     bool active() const { return bool(enemy_); }
     float rotor_angle() const { return rotor_angle_; }
+    Vec3 origin() const { return origin_; }
+    float subject_height() const { return profile_.subject_height; }
+    bool take_impact();
     void reset();
 
 private:
@@ -48,10 +53,10 @@ private:
     Rumble rumble_;
     PlayClassSound sound_;
     Target seen_{}, enemy_{}, hero_{};
-    Vec3 origin_{}, landing_{}, angles_{}, bounds_offset_{};
+    Vec3 origin_{}, landing_{}, angles_{}, local_bounds_{};
     unsigned collision_{};
-    float elapsed_{}, rotor_angle_{};
-    bool trace_{};
+    float elapsed_{}, rotor_angle_{}, turn_{};
+    bool impact_{}, trace_{};
 
     bool same_actor(Target) const;
     void place(Target actor, Vec3 position, Vec3 angles);

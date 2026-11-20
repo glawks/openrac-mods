@@ -27,7 +27,11 @@ struct Stack {
 };
 }
 NativeWorld::NativeWorld(const openrac_api* api,openrac_mod* mod,NativeAmmunition& ammunition,NativeRotor& rotor,GuestArena& arena):Memory(api),arm_(api,arena),ammunition_(ammunition),rotor_(rotor),sparks_(api),crates_(api),
- gag_(api,mod,snagglebeast_crush),
+ gag_(api,mod,snagglebeast_crush),gag_camera_(api,mod,this,
+  +[](const void* scene,Vec3 from,Vec3 to){
+   const auto& world=*static_cast<const NativeWorld*>(scene);
+   return world.ray(from,to,world.body());
+  }),
  allocate_(function<Allocate>("FUN_001ff288")),post_hit_(function<Hit>("FUN_L00_00259a88")),
  ray_(function<Ray>("FUN_001efa68")),basis_(function<Basis>("FUN_001fa030")),
  state_(function<State>("FUN_L00_002223f8")),scale_ticks_(reinterpret_cast<ScaleTicks>(find_function("FUN_001f96f8"))),
@@ -49,7 +53,10 @@ bool NativeWorld::valid(Target t)const{return identity_valid(t)&&(capturable_cla
 bool NativeWorld::try_capture_gag(const Frame& frame){
  if(flight_count())return false;
  const auto boss=gag_.candidate(frame);
- return boss&&visible_from(frame.position+Vec3{0,0,.85f},boss,body())&&gag_.start(frame,token(body()),boss);
+ if(!boss||!visible_from(frame.position+Vec3{0,0,.85f},boss,body())||
+    !gag_.start(frame,token(body()),boss))return false;
+ gag_camera_.begin(frame.position,gag_.origin(),frame.yaw,gag_.subject_height());
+ return true;
 }
 void NativeWorld::each_enemy(const void* context,void(*fn)(const void*,Target),bool include_crates)const{
  const auto first=read<unsigned>(global(0x15ff18)),last=read<unsigned>(global(0x15ff20));
@@ -592,6 +599,7 @@ void NativeWorld::finish_throw_animation(){
 void NativeWorld::attack_cancelled(){finish_throw_animation();recoil_.cancel();recoil_body_={};arm_.reset();sparks_.reset();contact_tip_.reset();}
 void NativeWorld::cancelled(){
  ++cancellation_generation_;
+ if(gag_.active())gag_camera_.reset();
  gag_.reset();
  restore_lease(lease_,true);
  for(auto& entry:flights_){restore_lease(entry.lease,true);entry={};}
@@ -678,6 +686,7 @@ std::optional<Vec3> NativeWorld::throw_anchor(float angle,float progress){
  return contact_tip_;
 }
 void NativeWorld::reset(){
+ gag_camera_.reset();
  if(lease_.target)release(lease_.target,true);
  cancelled();arm_.reset(true);level_=api_->loaded_level();last_frame_={};
 }

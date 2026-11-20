@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #include "native_capture_gag.hpp"
-#include "arm_math.hpp"
+#include "attachment.hpp"
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace revolverator {
 namespace {
 constexpr int hero_dying_speed_limited = 0x80;
+constexpr float revolution = 6.283185307f;
 
 float ease(float progress) {
     const float t = std::clamp(progress, 0.f, 1.f);
@@ -57,14 +59,19 @@ bool NativeCaptureGag::start(const Frame& frame, Target hero, Target enemy) {
     if(!enemy || !(enemy==candidate(frame)) || !same_actor(hero) || hero.klass!=0) return false;
     origin_=read<Vec3>(enemy.address+0x10);
     angles_=read<Vec3>(enemy.address+0x40);
-    bounds_offset_=read<Vec3>(enemy.address)*(1.f/1024.f)-origin_;
-    if(!finite(origin_) || !finite(angles_) || !finite(bounds_offset_) || length_squared(bounds_offset_)>100.f)
+    const auto offset=read<Vec3>(enemy.address)*(1.f/1024.f)-origin_;
+    if(!finite(origin_) || !finite(angles_) || !finite(offset) || length_squared(offset)>100.f)
         return false;
+    const auto q=rotation_from_euler(angles_);
+    local_bounds_=rotate({-q[0],-q[1],-q[2],q[3]},offset);
     enemy_=enemy;
     hero_=hero;
     const Vec3 forward{std::cos(frame.yaw),std::sin(frame.yaw),0};
     landing_=frame.position+forward*.55f;
     landing_.z=origin_.z;
+    const auto to_hero=frame.position-origin_;
+    turn_=profile_.turn_toward_hero && std::hypot(to_hero.x,to_hero.y)>.1f ?
+        std::remainder(std::atan2(to_hero.y,to_hero.x)-angles_.z,revolution):0.f;
     collision_=read<unsigned>(enemy.address+0x94);
     write<unsigned>(enemy.address+0x94,0);
     if(trace_)api_->log(mod_,OPENRAC_LOG_INFO,"Snagglebeast gag: lift started");
@@ -82,7 +89,7 @@ bool NativeCaptureGag::owns_hero(Target actor) const {
 void NativeCaptureGag::place(Target actor, Vec3 position, Vec3 angles) {
     const unsigned at=actor.address;
     write(at+0x10,position);
-    write(at,(position+bounds_offset_)*1024.f);
+    write(at,(position+rotate(rotation_from_euler(angles),local_bounds_))*1024.f);
     write(at+0x40,angles);
     basis_(at+0xc0,at+0x40);
 }
@@ -106,20 +113,24 @@ void NativeCaptureGag::tick(const Frame& frame, Target hero, unsigned hero_data)
     const float fall=std::clamp((elapsed_-fall_start)/profile_.fall_time,0.f,1.f);
     const float lift=ease(elapsed_/profile_.lift_time);
     const float strained=lift*(1.f-fall);
-    const float approach=ease(elapsed_/fall_start);
+    const float approach=.24f*lift+.10f*ease((elapsed_-profile_.lift_time)/profile_.hang_time)
+        +.66f*ease(fall);
     const float speed=elapsed_<fall_start ? 10.f+26.f*lift : 36.f*(1.f-fall)*(1.f-fall);
-    rotor_angle_=std::remainder(rotor_angle_+speed*frame.seconds,6.283185307f);
+    rotor_angle_=std::remainder(rotor_angle_+speed*frame.seconds,revolution);
     if(fall<1.f) {
         const auto pos=origin_+(landing_-origin_)*approach+
             Vec3{0,0,profile_.height*lift*(1.f-fall*fall)};
-        const auto lean=angles_+Vec3{.12f*strained,.11f*strained*std::sin(17.f*elapsed_),0};
+        const auto travel=unit(landing_-origin_);
+        const float tip=.38f*std::sin(3.14159265f*fall);
+        const auto lean=angles_+Vec3{-.10f*strained-travel.y*tip,
+            .06f*strained*std::sin(17.f*elapsed_)+travel.x*tip,turn_*ease(elapsed_/fall_start)};
         place(enemy_,pos,lean);
         return;
     }
 
     const auto boss=enemy_;
     const auto native_origin=origin_, native_angles=angles_;
-    place(boss,landing_,angles_);
+    place(boss,landing_,angles_+Vec3{0,0,turn_});
     release(false);
     // The original grounded death state clears HP, starts the death clip and
     // lets the game's control loop return to the active checkpoint.
@@ -137,6 +148,7 @@ void NativeCaptureGag::tick(const Frame& frame, Target hero, unsigned hero_data)
         // Play the stock shockwave's impact sample without creating a second hit.
         if(sound_&&profile_.landing_sound_class)sound_(0,0,boss.address,int(profile_.landing_sound_class));
     }
+    impact_=true;
     if(trace_)api_->log(mod_,OPENRAC_LOG_INFO,"Snagglebeast gag: impact, native hero death");
 }
 
@@ -149,9 +161,12 @@ void NativeCaptureGag::release(bool restore_pose) {
     elapsed_=rotor_angle_=0;
 }
 
+bool NativeCaptureGag::take_impact() {return std::exchange(impact_,false);}
+
 void NativeCaptureGag::reset() {
     release(true);
     seen_={};
+    impact_=false;
 }
 
 }

@@ -12,6 +12,7 @@
 #include "native_contact_sparks.hpp"
 #include "native_crates.hpp"
 #include "native_capture_gag.hpp"
+#include "native_gag_camera.hpp"
 #include "weapon_audio.hpp"
 #include <array>
 namespace revolverator {
@@ -51,6 +52,7 @@ public:
  bool gag_owns(unsigned moby)const{return gag_.owns(moby);}
  bool gag_active()const{return gag_.active();}
  float gag_rotor_angle()const{return gag_.rotor_angle();}
+ void update_gag_camera(const Frame& frame){gag_camera_.update(frame,gag_.active(),gag_.take_impact());}
  Frame snapshot(bool primary,std::uint32_t epoch)const;
  void set_active(bool active){active_=active;if(!active)recoil_.cancel();}
  void set_golden(bool golden){golden_=golden;}
@@ -90,6 +92,7 @@ private:
  NativeContactSparks sparks_;
  NativeCrates crates_;
  NativeCaptureGag gag_;
+ NativeGagCamera gag_camera_;
  WeaponAudioSink* audio_{};
  struct GroundContact {Target target{};unsigned updates{};} ground_contact_;
  std::optional<Vec3> contact_tip_;

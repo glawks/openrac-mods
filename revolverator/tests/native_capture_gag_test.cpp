@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #include "native_capture_gag.hpp"
+#include "native_gag_camera.hpp"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +25,8 @@ struct Fixture {
     std::vector<unsigned char> bytes=std::vector<unsigned char>(0x30000);
     openrac_api api{};
     int level=7, deaths=0, sounds=0, shakes=0;
+    int camera_sets=0,camera_releases=0;
+    bool camera_busy=false;
     Frame frame{1.f/60.f,1,true,true,false,true,true,true,{0,0,36},0};
     Target body{hero,0,0,15}, boss{enemy,vars,1106,24};
 
@@ -57,10 +60,21 @@ struct Fixture {
         api.loaded_level=+[]{return current->level;};
         api.setting_bool=+[](openrac_mod*,const char*)->int{return 0;};
         api.log=+[](openrac_mod*,int,const char*){};
+        api.size=sizeof api;api.api_minor=12;
+        api.camera_view=+[](openrac_camera* out)->int{
+            *out={sizeof(openrac_camera),{-8,0,38},{1,0,0},{0,1,0},{0,0,1}};
+            return OPENRAC_HOOK_OK;
+        };
+        api.camera_set=+[](openrac_mod*,const openrac_camera* view)->int{
+            if(current->camera_busy)return OPENRAC_HOOK_TAKEN;
+            if(view)++current->camera_sets;
+            else ++current->camera_releases;
+            return OPENRAC_HOOK_OK;
+        };
         put(hero+0x38,body.stamp);
         put(enemy+0x38,boss.stamp);put(enemy+0x78,vars);put<unsigned short>(enemy+0xa6,1106);
         put<unsigned char>(enemy+0x20,1);put(enemy+0x94,collision);
-        put(enemy+0x10,Vec3{4,0,36});put(enemy,Vec3{4,0,37}*1024.f);
+        put(enemy+0x10,Vec3{4,0,36});put(enemy,Vec3{5,0,37}*1024.f);
         put(vars+0x20,12.f);put(hero_data+0x22a8,4);
     }
 };
@@ -101,6 +115,9 @@ int main(){
     const auto landed=f.get<Vec3>(enemy+0x10);
     check(std::abs(landed.x-.55f)<.001f&&landed.z==36&&f.get<float>(vars+0x20)==12.f,
         "the living boss lands in front of Ratchet with its original health");
+    check(std::abs(f.get<Vec3>(enemy).x/1024.f+.45f)<.001f,
+        "the native collision sphere turns with the boss at the landing pose");
+    check(gag.take_impact()&&!gag.take_impact(),"the camera consumes one successful impact cue");
 
     f.frame.yaw=0;
     check(gag.start(f.frame,f.body,f.boss),"the fixture can create a separate incident");
@@ -109,4 +126,24 @@ int main(){
     gag.tick(f.frame,f.body,hero_data);
     check(f.get<unsigned>(enemy+0x94)==0x29000&&!gag.active()&&f.deaths==1,
         "a reused enemy slot does not inherit this incident or receive writes");
+
+    NativeGagCamera camera(&f.api,nullptr,nullptr,nullptr);
+    f.camera_busy=true;
+    camera.begin(f.frame.position,{4,0,36},0,8.7f);
+    camera.reset();
+    check(!f.camera_sets&&!f.camera_releases,"a busy camera is never taken or released");
+    f.camera_busy=false;
+    camera.begin(f.frame.position,{4,0,36},0,8.7f);
+    f.frame.paused=true;
+    camera.update(f.frame,false,false);
+    check(f.camera_sets==1&&f.camera_releases==1,"a cancelled shot relinquishes the camera in pause");
+    f.frame.paused=false;
+    camera.begin(f.frame.position,{4,0,36},0,8.7f);
+    camera.update(f.frame,false,true);
+    f.frame.alive=false;
+    for(int i=0;i<90;++i)camera.update(f.frame,false,false);
+    check(f.camera_releases==1,"a successful shot keeps its camera through the death fade");
+    f.frame.alive=true;
+    camera.update(f.frame,false,false);
+    check(f.camera_releases==2,"the respawn releases the shot to the native camera");
 }
