@@ -25,10 +25,16 @@ to cycle those eight assigned slots, using RAC2's `Item_Equip` function
 and checking ownership. These are test features, not yet verified in-game.
 The game itself retains control of item selection and weapon behavior.
 
-**Menus:** moving the mouse now sends directional navigation taps and
-left-click confirms the currently highlighted item. This is *not yet
-pixel-accurate hover/click targeting*; mouse movement moves the selection
-rather than directly selecting the item underneath the pointer.
+**Menus:** mouse motion makes deliberate d-pad navigation steps, with
+small sideways jitter ignored and a 12-tick delay between steps so long drags
+do not skip many rows. Deliberate horizontal swipes can step left/right for
+choice settings. Left-click confirms the highlighted option. This is *not
+yet pixel-accurate hover/click targeting*.
+
+**Quick Select:** while right-click remains held, a temporary loss of mouse
+capture no longer releases Triangle or re-enables movement/camera input in
+RAC2's weapon-wheel mode. The mod asks to recapture the cursor if necessary.
+This still needs an in-game retest; use an ordinary save for the alpha.
 
 Get the newest Windows Actions artifact from this fork's RAC2 alpha
 workflow and install the inner mod ZIP manually. Disable the official

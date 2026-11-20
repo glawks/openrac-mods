@@ -763,6 +763,26 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(wheel.bytes[4] > 0x80);
         CHECK(g_host->capture == 1);
 
+        // Reproduce the reported bug: entering the wheel sometimes drops
+        // mouse capture even while the right button is physically held.
+        tick();
+        g_host->input.captured = 0;
+        g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
+        g_host->input.mouse_dx = 170.0f;
+        const Report lost_capture = read_pad();
+        CHECK(lost_capture.held(kbm::kTriangle));
+        CHECK(lost_capture.bytes[2] == 0x80 && lost_capture.bytes[3] == 0x80);
+        CHECK(g_host->capture == 1);  // requested again
+
+        // If the physical button is absent for one tick while the wheel is
+        // open, a movement key still cannot move Ratchet or turn his camera.
+        tick();
+        hold(26); // W
+        g_host->input.mouse_dx = 200.0f;
+        const Report wheel_no_button = read_pad();
+        CHECK(wheel_no_button.bytes[4] == 0x80 && wheel_no_button.bytes[5] == 0x80);
+        CHECK(wheel_no_button.bytes[2] == 0x80 && wheel_no_button.bytes[3] == 0x80);
+
         // A real RAC2 pause menu uses mode 3, not the wheel controls.
         at<std::int32_t>(0x001A8BB0u) = 3;
         tick();
@@ -808,9 +828,29 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         g_host->phase = OPENRAC_PLAY_FRONT_END;
         tick();
         g_host->input.pointer_inside = 1;
+        g_host->input.mouse_dx = 8.0f; // lateral jitter must not stop vertical movement
         g_host->input.mouse_dy = 70.0f;
         const Report mouse_nav = read_pad();
         CHECK(mouse_nav.held(kbm::kDown));
+        CHECK(!mouse_nav.held(kbm::kLeft) && !mouse_nav.held(kbm::kRight));
+
+        // Even a giant swipe cannot scroll more than one row immediately.
+        tick();
+        g_host->input.pointer_inside = 1;
+        g_host->input.mouse_dy = 900.0f;
+        const Report during_cooldown = read_pad();
+        CHECK(!during_cooldown.held(kbm::kDown));
+        for (int i = 0; i < 12; ++i) {
+            tick();
+            g_host->input.pointer_inside = 1;
+            read_pad();
+        }
+        tick();
+        g_host->input.pointer_inside = 1;
+        g_host->input.mouse_dx = 6.0f;
+        g_host->input.mouse_dy = 75.0f;
+        const Report second_step = read_pad();
+        CHECK(second_step.held(kbm::kDown));
 
         tick();
         g_host->input.pointer_inside = 1;

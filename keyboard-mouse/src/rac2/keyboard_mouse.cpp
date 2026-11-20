@@ -9,7 +9,9 @@
 #include "openrac/mod.hpp"
 #include "../kbm.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -20,6 +22,64 @@ namespace {
 
 using kbm::Action;
 using kbm::Context;
+
+// RAC2's native menu is operated by pad directions. Give mouse motion a
+// deliberate, single d-pad step rather than pretending a big drag is dozens
+// of consecutive joystick presses. Small lateral jitter must not interfere
+// with moving vertically through a list.
+struct MenuMotion {
+    float vertical = 0.0f;
+    float horizontal = 0.0f;
+    int cooldown = 0;
+
+    void reset() {
+        vertical = horizontal = 0.0f;
+        cooldown = 0;
+    }
+
+    std::uint16_t step(float dx, float dy) {
+        if (!std::isfinite(dx) || !std::isfinite(dy)) {
+            reset();
+            return 0;
+        }
+        if (cooldown > 0) {
+            --cooldown;
+            // A long swipe cannot queue directions to fire later.
+            vertical = horizontal = 0.0f;
+            return 0;
+        }
+
+        const float ax = std::fabs(dx), ay = std::fabs(dy);
+        if (ay > 0.0f && (ay >= ax * 0.45f || ax < 12.0f)) {
+            vertical = std::clamp(vertical + std::clamp(dy, -70.0f, 70.0f),
+                                  -70.0f, 70.0f);
+            horizontal = 0.0f;
+        } else if (ax >= 24.0f && ax >= ay * 3.0f) {
+            // Only a deliberate, mostly horizontal motion changes a value.
+            horizontal = std::clamp(horizontal + std::clamp(dx, -90.0f, 90.0f),
+                                    -120.0f, 120.0f);
+            vertical = 0.0f;
+        } else {
+            // Ignore small sideways drift; retain modest vertical intent.
+            vertical = std::clamp(vertical + std::clamp(dy, -15.0f, 15.0f),
+                                  -70.0f, 70.0f);
+            horizontal *= 0.5f;
+        }
+        if (std::fabs(vertical) >= 70.0f) {
+            const auto direction = vertical > 0.0f ? kbm::kDown : kbm::kUp;
+            vertical = horizontal = 0.0f;
+            cooldown = 12;  // release the button before another gesture
+            return direction;
+        }
+        if (std::fabs(horizontal) >= 120.0f) {
+            const auto direction = horizontal > 0.0f ? kbm::kRight : kbm::kLeft;
+            vertical = horizontal = 0.0f;
+            cooldown = 12;
+            return direction;
+        }
+        return 0;
+    }
+};
 
 class Keyboard {
 public:
@@ -62,9 +122,11 @@ private:
         for (int key : binds_.of(action)) {
             if (key == 0) continue;
             if (kbm::is_mouse(key)) {
-                // Pointer input only with the captured mouse in play, or over
-                // the game picture in a menu.
-                if (play ? !in.captured : !in.pointer_inside) continue;
+                // A held Quick Select mouse button must survive a transient
+                // loss of relative mouse capture as RAC2 opens the wheel.
+                // All other gameplay mouse actions still require capture.
+                const bool wheel = play && action == Action::QuickSelect;
+                if (play ? (!wheel && !in.captured) : !in.pointer_inside) continue;
             }
             if (openrac_bind_held(&in, key) || openrac_bind_pressed(&in, key))
                 return true;
@@ -193,7 +255,10 @@ private:
         const int input_phase = quick_select_mode ? OPENRAC_PLAY_PLAYING : phase;
 
         const bool want_capture = capture_ && play && in.focused && !in.overlay;
-        if (requested_capture_ != static_cast<int>(want_capture)) {
+        if (requested_capture_ != static_cast<int>(want_capture)
+            || (want_capture && !in.captured)) {
+            // Retry when another front-end transition released capture
+            // without changing our requested state.
             mod_.capture_mouse(want_capture);
             requested_capture_ = static_cast<int>(want_capture);
         }
@@ -205,8 +270,7 @@ private:
             ring_.reset();
             ring_open_ = false;
             repeats_ = {};
-            menu_stepper_.reset();
-            menu_pulses_.clear();
+            menu_motion_.reset();
             requested_item_ = 0;
             previous_phase_ = input_phase;
         }
@@ -258,14 +322,20 @@ private:
             v.held = kbm::buttons_for(Context::Play, held, -1);
 
             const bool ring = on(Action::QuickSelect);
-            if (ring) {
-                v.held = static_cast<std::uint16_t>(v.held | kbm::kTriangle);
-                if (!ring_open_) ring_.reset();
-                if (in.captured) ring_.add(in.mouse_dx, in.mouse_dy, ring_dead_zone_);
-                const auto direction = ring_.stick(ring_dead_zone_);
-                // To be validated in RAC2: whether this ring reads left or right stick.
-                v.left_x = direction.first;
-                v.left_y = direction.second;
+            if (ring || quick_select_mode) {
+                if (ring) {
+                    v.held = static_cast<std::uint16_t>(v.held | kbm::kTriangle);
+                    if (!ring_open_) ring_.reset();
+                    // When capture flickers off, keep the wheel held. The
+                    // previous direction is retained until it returns.
+                    if (in.captured)
+                        ring_.add(in.mouse_dx, in.mouse_dy, ring_dead_zone_);
+                    const auto direction = ring_.stick(ring_dead_zone_);
+                    v.left_x = direction.first;
+                    v.left_y = direction.second;
+                }
+                // Never turn WASD into walking while RAC2's weapon wheel is
+                // on-screen, even if its mouse button disappeared for a tick.
                 keys_ = kbm::KeyStick{};
             } else {
                 keys_.step(on(Action::MoveForward), on(Action::MoveBack),
@@ -282,7 +352,7 @@ private:
             // controller's right stick, with no persisted vertical tilt.
             const bool pad_look = report[2] < 88 || report[2] > 168
                                 || report[3] < 88 || report[3] > 168;
-            if (in.captured && !ring && !pad_look) {
+            if (in.captured && !ring && !quick_select_mode && !pad_look) {
                 look_.step(in.mouse_dx, in.mouse_dy, true, look_settings_);
                 v.right_x = look_.x;
                 v.right_y = look_.y;
@@ -342,13 +412,12 @@ private:
             if (interactive_menu && menu_mouse_ && in.pointer_inside
                 && in.focused && !in.overlay) {
                 const float dx = phase == OPENRAC_PLAY_FRONT_END ? 0.0f : in.mouse_dx;
-                const std::uint16_t direction =
-                    menu_stepper_.step(dx, in.mouse_dy);
-                if (direction != 0) menu_pulses_.push(direction);
-                v.held = static_cast<std::uint16_t>(v.held | menu_pulses_.step());
+                // No queued pulses: one menu direction every twelve ticks at
+                // most; big swipes and lateral jitter cannot skip many rows.
+                v.held = static_cast<std::uint16_t>(
+                    v.held | menu_motion_.step(dx, in.mouse_dy));
             } else {
-                menu_stepper_.reset();
-                menu_pulses_.clear();
+                menu_motion_.reset();
             }
         } else if (scene) {
             v.held = kbm::buttons_for(Context::Cutscene, held, -1);
@@ -365,8 +434,7 @@ private:
     kbm::MouseLook look_{};
     kbm::RingPointer ring_{};
     kbm::Latch latch_{};
-    kbm::Stepper menu_stepper_{};
-    kbm::Pulser menu_pulses_{};
+    MenuMotion menu_motion_{};
     std::array<kbm::Repeat, 4> repeats_{};
     kbm::Virtual pad_{};
     std::uint32_t tick_ = std::numeric_limits<std::uint32_t>::max();
@@ -393,7 +461,7 @@ void load(openrac::Mod& mod) {
     mod.on_pad([keyboard](int port, std::uint8_t* report, int size) {
         keyboard->on_pad(port, report, size);
     });
-    mod.info("RAC2 experimental keyboard/mouse (Quick Select mode fix, weapon hotkeys and menu mouse steps)");
+    mod.info("RAC2 experimental keyboard/mouse (stable Quick Select capture and controlled menu mouse steps)");
 }
 
 }  // namespace kbm_rac2
