@@ -1,10 +1,10 @@
 # Release packaging and provenance
 
-The Windows archive is revolverator-0.3.5-windows-x86_64.zip with
+The Windows archive is revolverator-0.3.6-windows-x86_64.zip with
 openrac-mod.json at its root. The manifest names author **lorenzogarrone**,
-version 0.3.5, GPL-3.0-or-later and minimum mod interface 1.12. The release
-tag is revolverator-v0.3.5. Its release receipt identifies the exact binaries
-and reports the PAL Gadgetron, Challenge Mode and item-grant coverage.
+version 0.3.6, GPL-3.0-or-later and minimum mod interface 1.12. The release
+tag for this package is revolverator-v0.3.6. The receipt identifies the exact
+binaries and records PAL checks for crate throws and the Nanotech trail.
 
 ## Installable files
 

@@ -153,6 +153,40 @@ struct Fixture {
 }
 int main(){
  {
+  Fixture f;f.world.enable_crate_capture();
+  const Vec3 origin{1,0,20};
+  const auto crate=f.crate(0,501,origin),orb=f.enemy(1,806,origin);
+  f.put<unsigned char>(orb.address+0x20,1);f.put(orb.pvars+0x0c,crate.address);
+  f.put(crate.address+0xe0,Vec3{0,1,0});
+  require(f.world.find_target({0,0,20},0,2.8f)==crate&&f.world.capture(crate),"Nanotech fixture is held by the Rotatore");
+  constexpr unsigned particles=0x120000;
+  f.put(0x1600ac,particles);f.put(0x1600b4,4);
+  const Vec3 offset{0,.12f,.56f};
+  for(unsigned i=0;i<5;++i){
+   const auto part=particles+i*64;f.put<unsigned char>(part,62);
+   f.put<short>(part+0x22,i==2?1:2);f.put(part+0x24,i==3?body:crate.address);
+   f.put(part+0x30,offset);f.put(part+0x10,origin+offset);
+  }
+  f.put<signed char>(particles+4*64+1,-1);
+  f.world.update_nanotech(orb.address,+[](unsigned m){
+   const auto source=live->get<unsigned>(live->get<unsigned>(m+0x78)+0x0c);
+   live->put(m+0x10,live->get<Vec3>(source+0x10));
+  });
+  const Vec3 adjusted=origin+Vec3{0,.5f,-.5f};
+  require(length_squared(f.get<Vec3>(crate.address+0x10)-origin)<.00001f,"temporary orb sampling restores the held crate");
+  for(unsigned i=0;i<2;++i){
+   const auto part=particles+i*64;
+   require(f.get<unsigned>(part+0x24)==orb.address&&length_squared(f.get<Vec3>(part+0x10)-(adjusted+offset))<.00001f,
+           "live attached trails switch immediately to the adjusted orb coordinate frame");
+  }
+  for(unsigned i=2;i<5;++i){
+   const auto part=particles+i*64;
+   require(f.get<unsigned>(part+0x24)==(i==3?body:crate.address)&&
+           length_squared(f.get<Vec3>(part+0x10)-(origin+offset))<.00001f,
+           "persistent slots, foreign trails and retired particles are untouched");
+  }
+ }
+ {
   Fixture f;f.world.enable_crate_capture();f.floor_z=20.f;
   const auto crate=f.crate(0,500,{1,0,21});
   const auto upper=f.crate(1,500,{1,0,22});

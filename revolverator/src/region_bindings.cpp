@@ -162,6 +162,7 @@ unsigned RegionBindings::data(unsigned canonical) const {
     case 0x0015ff20u:return 0x00160020u;
     case 0x001600acu:return 0x001601acu; // Native particle pool base.
     case 0x001600b0u:return 0x001601b0u; // Next free particle slot.
+    case 0x001600b4u:return 0x001601b4u; // Last active particle slot.
     case 0x001600b8u:return 0x001601b8u; // Active particle count.
     case 0x00160290u:return 0x00160390u;
     case 0x00160294u:return 0x00160394u;

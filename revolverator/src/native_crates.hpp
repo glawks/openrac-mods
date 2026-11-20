@@ -26,5 +26,6 @@ private:
     Drop drop_{};
     bool enabled_{};
     bool valid_neighbour(unsigned actor,unsigned reciprocal,unsigned owner) const;
+    void align_nanotech_trail(unsigned orb,unsigned crate) const;
 };
 }

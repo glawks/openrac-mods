@@ -13,6 +13,10 @@ constexpr unsigned nanotech_crate_class=501,nanotech_ball_class=806;
 constexpr unsigned position_offset=0x10,state_offset=0x20,stamp_offset=0x38;
 constexpr unsigned pvars_offset=0x78,class_offset=0xa6,up_offset=0xe0;
 constexpr unsigned owner_offset=0x0c;
+constexpr unsigned part_pool=0x1600ac,part_high_water=0x1600b4,part_size=64,part_capacity=2048;
+constexpr unsigned trail_type=62,part_state_offset=1,trail_mode_offset=0x22;
+constexpr unsigned trail_owner_offset=0x24,trail_relative_position_offset=0x30;
+constexpr short trail_follow_owner=2;
 }
 
 NativeCrates::NativeCrates(const openrac_api* api):Memory(api),
@@ -100,11 +104,7 @@ void NativeCrates::update_carried_nanotech(unsigned orb,unsigned owner,Update ne
     // of 0.5 for the ball and its particle slots. Feed it a sampled origin that
     // puts that anchor on the same local axis as the rotated crate model.
     const auto sampled=position+(up-Vec3{0,0,1})*.5f;
-    if(sampled.x==position.x&&sampled.y==position.y&&sampled.z==position.z){
-        next(orb);
-        return;
-    }
-    const struct RestorePosition {
+    struct RestorePosition {
         const Memory& memory;
         unsigned owner, pvars, stamp;
         Vec3 before, sampled;
@@ -116,8 +116,36 @@ void NativeCrates::update_carried_nanotech(unsigned orb,unsigned owner,Update ne
             if(current.x==sampled.x&&current.y==sampled.y&&current.z==sampled.z)
                 memory.write(owner+position_offset,before);
         }
-    } restore{*this,owner,read<unsigned>(owner+pvars_offset),read<unsigned>(owner+stamp_offset),position,sampled};
-    write(at,sampled);
-    next(orb);
+    };
+    const auto orb_vars=read<unsigned>(orb+pvars_offset),orb_stamp=read<unsigned>(orb+stamp_offset);
+    {
+        const RestorePosition restore{*this,owner,read<unsigned>(owner+pvars_offset),
+            read<unsigned>(owner+stamp_offset),position,sampled};
+        write(at,sampled);
+        next(orb);
+    }
+    if(nanotech_owner(orb)==owner&&read<unsigned>(orb+pvars_offset)==orb_vars&&
+       read<unsigned>(orb+stamp_offset)==orb_stamp)align_nanotech_trail(orb,owner);
+}
+
+void NativeCrates::align_nanotech_trail(unsigned orb,unsigned crate) const {
+    const auto pool=read<unsigned>(global(part_pool));
+    const int high=read<int>(global(part_high_water));
+    const auto origin=read<Vec3>(orb+position_offset);
+    if(high<0||high>=int(part_capacity)||!valid(pool,(unsigned(high)+1)*part_size)||!finite(origin))return;
+    for(unsigned slot=0;slot<=unsigned(high);++slot){
+        const auto part=pool+slot*part_size;
+        if(read<unsigned char>(part)!=trail_type||read<signed char>(part+part_state_offset)<0||
+           read<short>(part+trail_mode_offset)!=trail_follow_owner)continue;
+        const auto owner=read<unsigned>(part+trail_owner_offset);
+        if(owner!=crate&&owner!=orb)continue;
+        const auto point=origin+read<Vec3>(part+trail_relative_position_offset);
+        if(!finite(point))continue;
+        // Native mode 2 stores each offset relative to the orb but follows
+        // the crate while attached. In flight it already follows the orb.
+        // Use that same anchor for carried orbs, including the existing trail.
+        if(owner==crate)write(part+trail_owner_offset,orb);
+        write(part+position_offset,point);
+    }
 }
 }

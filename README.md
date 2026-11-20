@@ -108,7 +108,7 @@ See the [weapon README](revolverator/README.md) for installation and controls.
 
 | Component | Current source | Role |
 |---|---|---|
-| [Revolverator](revolverator/README.md) |0.3.5, PAL reference | Additional weapon, charge-gated release, Gold upgrade, native sounds, contact sparks and API v3 |
+| [Revolverator](revolverator/README.md) | 0.3.6, PAL reference | Additional weapon, charge-gated enemy and crate throws, Gold upgrade, native sounds, contact sparks and API v3 |
 | [Weapon Experience](weapon-xp/README.md) |0.6.4 | Optional API v4 progression companion with PAL HUD/camera corrections |
 | [Skill Points: RetroAchievements](skill-points-ra/README.md) |0.1.3 | Native menu, offline rules and read-only/event C API v1 |
 | [Cinematic Journeys](cinematic-journeys/README.md) |0.1.1 | Cutscene protection and configurable original flight animation |
