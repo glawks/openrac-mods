@@ -236,9 +236,18 @@ const char* setting_string(openrac_mod*, const char* key) {
     return std::strcmp(key, "camera_tilt") == 0 ? "hold" : "";
 }
 
+int game_item_equip(std::int32_t item);
+
 int host_hook(
     openrac_mod*, const char* name, const char* signature, void* replacement, void** original
 ) {
+    if (std::strcmp(name, "rac2.item.equip") == 0
+        && std::strcmp(signature, "i32(i32)") == 0) {
+        CHECK(replacement != nullptr && original != nullptr);
+        *original = reinterpret_cast<void*>(&game_item_equip);
+        ++g_host->hook_entry_calls; // verify original hook resolved at load
+        return OPENRAC_HOOK_OK;
+    }
     CHECK(
         std::strcmp(name, "rac1.camera.follow.apply_overrides") == 0
         || std::strcmp(name, "FollowCamera_ApplyOverrides") == 0
@@ -266,17 +275,6 @@ int game_item_equip(std::int32_t item) {
     g_host->equipped_id = item;
     ++g_host->equip_calls;
     return 1;
-}
-
-// RAC2 weapon equip must be resolved by its stable hook-point identifier,
-// rather than trying a native function lookup for "Item_Equip".
-void* host_hook_entry(const char* name, const char* signature) {
-    ++g_host->hook_entry_calls;
-    if (name != nullptr && signature != nullptr
-        && std::strcmp(name, "rac2.item.equip") == 0
-        && std::strcmp(signature, "i32(i32)") == 0)
-        return reinterpret_cast<void*>(&game_item_equip);
-    return nullptr;
 }
 
 void* host_function(const char* name) {
@@ -418,7 +416,6 @@ openrac_api make_api() {
     api.on_frame = host_on_frame;
     api.on_pad = host_on_pad;
     api.function = host_function;
-    api.hook_entry = host_hook_entry;
     api.function_at = host_function_at;
     api.relocate_data = host_relocate;
     api.relocate_level_data = host_relocate_level;
@@ -711,6 +708,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         std::fprintf(stderr, "DEBUG RAC2 loaded\n");
         CHECK(g_host->failed.empty() && g_host->pad != nullptr);
         CHECK(g_host->camera_hook == nullptr && g_host->functions.empty());
+        CHECK(g_host->hook_entry_calls > 0); // RAC2 hook installed at load
         CHECK(g_host->taken == (OPENRAC_INPUT_KEYBOARD | OPENRAC_INPUT_MOUSE));
 
         g_host->phase = OPENRAC_PLAY_PLAYING;

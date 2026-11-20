@@ -24,9 +24,10 @@ The alpha includes **1–8 Quick Select slot hotkeys** and **wheel up/down**
 to cycle those eight assigned slots, using RAC2's `Item_Equip` function
 and checking ownership. Alpha.6 adds multi-notch cycling, skips unowned
 items and logs `RAC2 weapon key` or `RAC2 weapon wheel` on input.
-These features still need in-game testing. In alpha.7 the shared equip
-path uses OpenRAC's RAC2 `rac2.item.equip` hook entry (API 1.21+) instead
-of the native function-name lookup, which returned null in the actual game.
+These features still need in-game testing. Alpha.8 uses a passthrough
+`rac2.item.equip` hook and invokes its original when selecting weapons,
+rather than the native function-name lookup that returned null in-game.
+This also supports the fork's pinned pre-1.21 SDK.
 The log now records `RAC2 equip request: item=..., result=...` when
 the game accepts/rejects a weapon change.
 The game itself retains control of item selection and weapon behavior.

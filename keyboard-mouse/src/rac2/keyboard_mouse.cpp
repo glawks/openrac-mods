@@ -243,15 +243,15 @@ private:
     void equip_item(int item, std::uint32_t tick) {
         if (!item_owned(item)) return;
         using Equip = openrac::rac2::Item_Equip;
-        // Item_Equip is an exported RAC2 hook point. The port's
-        // function("Item_Equip") resolves native function names and can
-        // return null even when the hooked gameplay function exists.
-        // Since API 1.21, hook_entry resolves the stable hook ID and calls
-        // the same hook chain the game itself uses.
-        const auto equip = mod_.hook_entry<Equip>();
+        // Native function("Item_Equip") is not exported by this game.
+        // Take the known RAC2 hook point at mod load and call its original
+        // chain when the player requests a weapon. This works on the pinned
+        // SDK (before hook_entry was added in interface 1.21), without
+        // writing into hero/item memory or opening Quick Select.
+        const auto equip = mod_.original<Equip>();
         if (equip == nullptr) {
             if (!warned_equip_) {
-                mod_.warn("RAC2 rac2.item.equip hook entry unavailable on this OpenRAC build/level; weapon shortcuts require interface 1.21");
+                mod_.warn("RAC2 Item_Equip hook original unavailable; weapon switching disabled");
                 warned_equip_ = true;
             }
             return;
@@ -559,6 +559,13 @@ private:
 void load(openrac::Mod& mod) {
     if (!mod.has_input() || !mod.has_play())
         throw openrac::Error("RAC2 keyboard/mouse requires the input and play APIs");
+    // A passthrough hook retains the port's Item_Equip original, which we
+    // can invoke from the keyboard and mouse pad callback. The normal
+    // in-game equip path is passed through unchanged.
+    mod.hook<openrac::rac2::Item_Equip>(
+        [](auto original, std::int32_t item) -> std::int32_t {
+            return original(item);
+        });
     auto keyboard = std::make_shared<Keyboard>(mod);
     mod.take_input(OPENRAC_INPUT_KEYBOARD | OPENRAC_INPUT_MOUSE);
     mod.on_pad([keyboard](int port, std::uint8_t* report, int size) {
