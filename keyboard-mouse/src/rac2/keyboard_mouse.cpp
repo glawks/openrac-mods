@@ -99,7 +99,6 @@ private:
             look_.reset();
             ring_.reset();
             ring_open_ = false;
-            pulses_.clear();
             repeats_ = {};
             previous_phase_ = phase;
         }
@@ -192,9 +191,8 @@ private:
     kbm::LookTuning look_settings_{};
     kbm::KeyStick keys_{};
     kbm::MouseLook look_{};
-    kbm::Ring ring_{};
+    kbm::RingPointer ring_{};
     kbm::Latch latch_{};
-    kbm::Pulser pulses_{};
     std::array<kbm::Repeat, 4> repeats_{};
     kbm::Virtual pad_{};
     std::uint32_t tick_ = std::numeric_limits<std::uint32_t>::max();
