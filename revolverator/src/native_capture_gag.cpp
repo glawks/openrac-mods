@@ -4,6 +4,7 @@
 #include "attachment.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <utility>
 
 namespace revolverator {
@@ -19,7 +20,7 @@ float ease(float progress) {
 
 NativeCaptureGag::NativeCaptureGag(const openrac_api* api, openrac_mod* mod,
     const CaptureGagProfile& profile)
-    : Memory(api), profile_(profile), mod_(mod),
+    : Memory(api), profile_(profile), mod_(mod), smoke_(api),
       state_(reinterpret_cast<HeroState>(find_function("FUN_L00_002223f8"))),
       basis_(reinterpret_cast<Basis>(find_function("FUN_001fa030"))),
       rumble_(reinterpret_cast<Rumble>(find_function(profile.landing_rumble))),
@@ -94,6 +95,28 @@ void NativeCaptureGag::place(Target actor, Vec3 position, Vec3 angles) {
     basis_(at+0xc0,at+0x40);
 }
 
+unsigned NativeCaptureGag::emit_impact_dust(float seconds_per_tick) const {
+    const float scale=profile_.impact_dust_scale;
+    if(scale<=0.f)return 0;
+    constexpr unsigned ground_puffs=20, rising_puffs=12;
+    std::array<NativeSmoke::Puff,ground_puffs+rising_puffs> puffs{};
+    for(unsigned i=0;i<puffs.size();++i){
+        const bool rising=i>=ground_puffs;
+        const float angle=float(i)*2.39996323f;
+        const float variation=float(i*7u%13u)/12.f;
+        const Vec3 outward{std::cos(angle),std::sin(angle),0};
+        const float radius=(rising?.30f:.68f)+variation*(rising?.70f:.80f);
+        const auto point=landing_+(outward*radius+Vec3{0,0,rising?.26f:.14f})*scale;
+        const auto velocity=outward*(rising?1.4f+variation:3.6f+1.8f*variation)+
+            Vec3{0,0,rising?2.25f+1.2f*variation:.62f+.65f*variation};
+        const float lifetime=(rising?.74f:.53f)+.15f*variation;
+        puffs[i]={point,velocity*(seconds_per_tick*scale),rising?0x4649576b:0x594e6075,
+            0x00323f4d,static_cast<int>(std::lround(lifetime/seconds_per_tick)),
+            scale*(rising?680000.f+250000.f*variation:500000.f+220000.f*variation)};
+    }
+    return smoke_.emit(puffs.data(),static_cast<unsigned>(puffs.size()));
+}
+
 void NativeCaptureGag::tick(const Frame& frame, Target hero, unsigned hero_data) {
     if(!active())return;
     if(!owns_hero(hero) || !frame.alive || !valid(hero_data,0x22ac)) {
@@ -143,13 +166,19 @@ void NativeCaptureGag::tick(const Frame& frame, Target hero, unsigned hero_data)
         api_->log(mod_,OPENRAC_LOG_WARN,"Snagglebeast gag: the native death state was refused");
         return;
     }
+    unsigned dust=0;
     if(same_actor(boss)){
         if(rumble_)rumble_(boss.address);
         // Play the stock shockwave's impact sample without creating a second hit.
         if(sound_&&profile_.landing_sound_class)sound_(0,0,boss.address,int(profile_.landing_sound_class));
+        dust=emit_impact_dust(frame.seconds);
     }
     impact_=true;
-    if(trace_)api_->log(mod_,OPENRAC_LOG_INFO,"Snagglebeast gag: impact, native hero death");
+    if(trace_){
+        char message[100];
+        std::snprintf(message,sizeof message,"Snagglebeast gag: impact, native hero death, %u dust puffs",dust);
+        api_->log(mod_,OPENRAC_LOG_INFO,message);
+    }
 }
 
 void NativeCaptureGag::release(bool restore_pose) {

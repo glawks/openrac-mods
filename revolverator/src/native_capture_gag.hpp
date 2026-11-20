@@ -2,7 +2,7 @@
 // Copyright (c) 2026 noire342
 #pragma once
 #include "controller.hpp"
-#include "memory.hpp"
+#include "native_smoke.hpp"
 
 namespace revolverator {
 
@@ -18,10 +18,11 @@ struct CaptureGagProfile {
     unsigned landing_sound_class;
     float subject_height;
     bool turn_toward_hero;
+    float impact_dust_scale;
 };
 
 inline constexpr CaptureGagProfile snagglebeast_crush{
-    7, 1106, 1, 7, 0x20, 4.8f, 1.52f, .34f, .34f, .26f, "FUN_L07_003120d8", 0x416, 8.7f, true
+    7, 1106, 1, 7, 0x20, 4.8f, 1.52f, .34f, .34f, .26f, "FUN_L07_003120d8", 0x416, 8.7f, true, 1.35f
 };
 
 class NativeCaptureGag final : public Memory {
@@ -44,6 +45,7 @@ public:
 private:
     const CaptureGagProfile& profile_;
     openrac_mod* mod_;
+    NativeSmoke smoke_;
     using HeroState = int (*)(int,int);
     using Basis = void (*)(unsigned,unsigned);
     using Rumble = void (*)(unsigned);
@@ -60,6 +62,7 @@ private:
 
     bool same_actor(Target) const;
     void place(Target actor, Vec3 position, Vec3 angles);
+    unsigned emit_impact_dust(float seconds_per_tick) const;
     void release(bool restore_pose);
 };
 

@@ -36,6 +36,27 @@ openrac_camera shot(Vec3 eye,Vec3 forward) {
     to_row(camera.up,cross(forward,left));
     return camera;
 }
+
+openrac_camera impact_shake(openrac_camera base,float seconds) {
+    constexpr float duration=.95f;
+    if(seconds>=duration)return base;
+    const float decay=1.f-seconds/duration;
+    const float jolt=std::cos(24.f*seconds)*decay*decay;
+    // Downward hit on contact, then diminishing rebounds. The
+    // short roll is applied within the scene's view so the horizon recovers.
+    const auto left=from_row(base.left);
+    const auto up=from_row(base.up);
+    const auto eye=from_row(base.eye)+(left*.15f-up*.42f)*jolt;
+    const auto forward=from_row(base.forward)+(left*.041f-up*.115f)*jolt;
+    auto shaken=shot(eye,forward);
+    const auto shaken_left=from_row(shaken.left);
+    const auto shaken_up=from_row(shaken.up);
+    const float roll=-.043f*jolt;
+    const float sine=std::sin(roll), cosine=std::cos(roll);
+    to_row(shaken.left,shaken_left*cosine+shaken_up*sine);
+    to_row(shaken.up,shaken_up*cosine-shaken_left*sine);
+    return shaken;
+}
 }
 
 NativeGagCamera::NativeGagCamera(const openrac_api* api,openrac_mod* mod,const void* scene,Trace trace)
@@ -105,12 +126,11 @@ void NativeGagCamera::update(const Frame& frame,bool encounter_active,bool impac
 
     const float reveal=ease(time_/reveal_time);
     const float land=ease(since_impact_/.32f);
-    const float kick=landed_?.24f*std::sin(2.6f*since_impact_/.095f)*
-        std::exp(-since_impact_/.053f):0.f;
     const auto focus=mix(focus_,impact_focus_,land);
-    const auto eye=mix(from_row(entry_.eye),eye_,reveal)+Vec3{0,0,kick};
+    const auto eye=mix(from_row(entry_.eye),eye_,reveal);
     const auto forward=mix(from_row(entry_.forward),unit(focus-eye),reveal);
-    const auto camera=shot(eye,forward);
+    auto camera=shot(eye,forward);
+    if(landed_)camera=impact_shake(camera,since_impact_);
     if(api_->camera_set(mod_,&camera)!=OPENRAC_HOOK_OK)reset();
 }
 

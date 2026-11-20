@@ -2,8 +2,7 @@
 // Copyright (c) 2026 noire342
 #pragma once
 
-#include "controller.hpp"
-#include "memory.hpp"
+#include "native_smoke.hpp"
 
 namespace revolverator {
 
@@ -15,8 +14,7 @@ public:
     unsigned emit(Vec3 valve_world_point, float load, unsigned count);
 
 private:
-    using Spawn = void (*)(openrac_gaddr, openrac_gaddr, int, int, int, float);
-    Spawn spawn_{};
+    NativeSmoke smoke_;
     unsigned sequence_{};
 };
 

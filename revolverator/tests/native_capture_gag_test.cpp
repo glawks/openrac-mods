@@ -12,6 +12,7 @@ using namespace revolverator;
 namespace {
 constexpr unsigned hero=0x20000, enemy=0x21000, vars=0x22000, hero_data=0x25000;
 constexpr unsigned collision=0x28000;
+constexpr unsigned particle_stack=0x2a000;
 
 void check(bool ok, const char* reason) {
     if(ok)return;
@@ -26,6 +27,8 @@ struct Fixture {
     openrac_api api{};
     int level=7, deaths=0, sounds=0, shakes=0;
     int camera_sets=0,camera_releases=0;
+    unsigned smoke_puffs=0,rising_puffs=0;
+    openrac_camera last_camera{};
     bool camera_busy=false;
     Frame frame{1.f/60.f,1,true,true,false,true,true,true,{0,0,36},0};
     Target body{hero,0,0,15}, boss{enemy,vars,1106,24};
@@ -47,11 +50,23 @@ struct Fixture {
         check(!id&&!flags&&actor==enemy&&klass==0x416,"the impact sound is emitted without a shockwave actor");
         return ++current->sounds;
     }
+    static void smoke(unsigned point,unsigned velocity,int color,int fade,int lifetime,float size){
+        check(current->deaths==1,"dust is emitted only after the successful native crush");
+        const auto position=current->get<Vec3>(point);
+        const auto drift=current->get<Vec3>(velocity);
+        check(point==particle_stack&&velocity==point+16&&lifetime>20&&size>400000.f,
+            "impact uses large bounded native smoke puffs");
+        check(length_squared(position-Vec3{.55f,0,36})<4.2f&&drift.z>0.f&&
+            color>0&&fade>0&&fade<0x1000000,"dust starts at the landing point and fades upward");
+        ++current->smoke_puffs;
+        if(drift.z>.03f)++current->rising_puffs;
+    }
     static void* function(const char* name){
         if(std::strcmp(name,"FUN_001fa030")==0)return reinterpret_cast<void*>(&basis);
         if(std::strcmp(name,"FUN_L00_002223f8")==0)return reinterpret_cast<void*>(&state);
         if(std::strcmp(name,"FUN_L07_003120d8")==0)return reinterpret_cast<void*>(&rumble);
         if(std::strcmp(name,"FUN_L00_0028dc90")==0)return reinterpret_cast<void*>(&sound);
+        if(std::strcmp(name,"FUN_L00_0026ced0")==0)return reinterpret_cast<void*>(&smoke);
         return nullptr;
     }
     Fixture(){
@@ -60,6 +75,14 @@ struct Fixture {
         api.loaded_level=+[]{return current->level;};
         api.setting_bool=+[](openrac_mod*,const char*)->int{return 0;};
         api.log=+[](openrac_mod*,int,const char*){};
+        api.stack_push=+[](unsigned size,unsigned* previous)->unsigned{
+            check(size==32,"smoke batches reuse the same pair of aligned vectors");
+            *previous=particle_stack+32;
+            return particle_stack;
+        };
+        api.stack_pop=+[](unsigned previous){
+            check(previous==particle_stack+32,"smoke releases its stack");
+        };
         api.size=sizeof api;api.api_minor=12;
         api.camera_view=+[](openrac_camera* out)->int{
             *out={sizeof(openrac_camera),{-8,0,38},{1,0,0},{0,1,0},{0,0,1}};
@@ -67,7 +90,7 @@ struct Fixture {
         };
         api.camera_set=+[](openrac_mod*,const openrac_camera* view)->int{
             if(current->camera_busy)return OPENRAC_HOOK_TAKEN;
-            if(view)++current->camera_sets;
+            if(view){++current->camera_sets;current->last_camera=*view;}
             else ++current->camera_releases;
             return OPENRAC_HOOK_OK;
         };
@@ -104,7 +127,8 @@ int main(){
         "pause preserves the lease and holds the exact frame");
     f.frame.paused=false;f.frame.playing=true;
     gag.tick(f.frame,f.body,hero_data);
-    check(!gag.active()&&f.get<unsigned>(enemy+0x94)==collision&&f.get<Vec3>(enemy+0x10).x==4&&f.deaths==0,
+    check(!gag.active()&&f.get<unsigned>(enemy+0x94)==collision&&f.get<Vec3>(enemy+0x10).x==4&&
+        f.deaths==0&&f.smoke_puffs==0,
         "unequipping restores the original boss and causes no damage");
 
     f.frame.equipped=true;
@@ -112,6 +136,7 @@ int main(){
     f.frame.primary=false;
     for(int i=0;i<58;++i)gag.tick(f.frame,f.body,hero_data);
     check(f.deaths==1&&f.sounds==1&&f.shakes==1&&!gag.active(),"the completed fall produces exactly one impact");
+    check(f.smoke_puffs==32&&f.rising_puffs==12,"impact produces a low dust wave and a rising cloud");
     const auto landed=f.get<Vec3>(enemy+0x10);
     check(std::abs(landed.x-.55f)<.001f&&landed.z==36&&f.get<float>(vars+0x20)==12.f,
         "the living boss lands in front of Ratchet with its original health");
@@ -139,9 +164,16 @@ int main(){
     check(f.camera_sets==1&&f.camera_releases==1,"a cancelled shot relinquishes the camera in pause");
     f.frame.paused=false;
     camera.begin(f.frame.position,{4,0,36},0,8.7f);
+    for(int i=0;i<56;++i)camera.update(f.frame,true,false);
+    const auto before_impact=f.last_camera;
     camera.update(f.frame,false,true);
+    check(f.last_camera.forward[2]<before_impact.forward[2]-.10f &&
+        std::abs(f.last_camera.left[2])>.04f,"the camera kicks downward and rolls on the impact frame");
     f.frame.alive=false;
-    for(int i=0;i<90;++i)camera.update(f.frame,false,false);
+    for(int i=0;i<30;++i)camera.update(f.frame,false,false);
+    check(std::abs(f.last_camera.left[2])>.007f,"the impact is still felt half a second later");
+    for(int i=0;i<60;++i)camera.update(f.frame,false,false);
+    check(std::abs(f.last_camera.left[2])<.001f,"the roll settles before the return to gameplay");
     check(f.camera_releases==1,"a successful shot keeps its camera through the death fade");
     f.frame.alive=true;
     camera.update(f.frame,false,false);

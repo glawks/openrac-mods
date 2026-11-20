@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 
 namespace revolverator {
 namespace {
@@ -21,29 +20,15 @@ int smoke_color(float shade, float opacity) {
 }
 
 NativeValveSmoke::NativeValveSmoke(const openrac_api* api)
-    : Memory(api), spawn_(reinterpret_cast<Spawn>(find_function("FUN_L00_0026ced0"))) {}
+    : Memory(api), smoke_(api) {}
 
 unsigned NativeValveSmoke::emit(Vec3 valve_world_point, float load, unsigned count) {
-    if (!count || !spawn_ || !api_->memory || !api_->stack_push || !api_->stack_pop ||
-        !finite(valve_world_point) || !std::isfinite(load)) {
+    if (!count || !api_->memory || !finite(valve_world_point) || !std::isfinite(load)) {
         return 0;
     }
 
     const float intensity = std::clamp(load, 0.f, 1.f);
     count = std::min(count, 2u);
-    using GuestVector = std::array<float, 4>;
-    constexpr unsigned vector_bytes = sizeof(GuestVector);
-    openrac_gaddr saved{};
-    const auto stack = api_->stack_push(2 * vector_bytes, &saved);
-    if (!stack) return 0;
-    const struct StackFrame {
-        const openrac_api* api;
-        openrac_gaddr saved;
-        ~StackFrame() { api->stack_pop(saved); }
-    } frame{api_, saved};
-    // The SDK can allocate stack storage outside the original EE RAM range.
-    auto* const buffer = api_->memory + stack;
-
     // The Novalis smoke spawner takes two aligned vectors and owns the cloud's
     // upward acceleration, expansion and fade. Its PS2 color uses 0x80 for full alpha.
     const int initial_color = smoke_color(128.f - 94.f * intensity, 40.f + 58.f * intensity);
@@ -57,21 +42,17 @@ unsigned NativeValveSmoke::emit(Vec3 valve_world_point, float load, unsigned cou
     const float lateral_speed = (.055f + .205f * intensity) * seconds_per_tick;
     const float upward_speed = (.36f + .24f * intensity) * seconds_per_tick;
 
-    const GuestVector position{valve_world_point.x, valve_world_point.y, valve_world_point.z, 1.f};
-    std::memcpy(buffer, position.data(), vector_bytes);
+    std::array<NativeSmoke::Puff, 2> puffs{};
     for (unsigned i = 0; i < count; ++i) {
         // Rotate the lateral drift between puffs while keeping the source at the valve.
-        const float phase = float(sequence_++ % 4096u) * 2.39996323f;
-        const GuestVector velocity{
-            std::cos(phase) * lateral_speed,
-            std::sin(phase) * lateral_speed,
-            upward_speed,
-            0.f,
-        };
-        std::memcpy(buffer + vector_bytes, velocity.data(), vector_bytes);
-        spawn_(stack, stack + vector_bytes, initial_color, final_color, lifetime, final_size);
+        const float phase = float((sequence_ + i) % 4096u) * 2.39996323f;
+        puffs[i] = {valve_world_point,
+            {std::cos(phase) * lateral_speed, std::sin(phase) * lateral_speed, upward_speed},
+            initial_color, final_color, lifetime, final_size};
     }
-    return count;
+    const auto emitted = smoke_.emit(puffs.data(), count);
+    sequence_ += emitted;
+    return emitted;
 }
 
 }
