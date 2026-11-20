@@ -17,6 +17,7 @@
 #include "native_gold_vendor.hpp"
 #include "native_acquisition.hpp"
 #include "revolverator_api.h"
+#include "eqs_probe.hpp"
 #include <memory>
 #include <exception>
 #include <cstring>
@@ -426,9 +427,17 @@ int item_ammo(unsigned screen){
  ArsenalScope view(s.arsenal,key);return item_ammo_original(screen);
 }
 void quick_init(unsigned element){
- if(session){session->arsenal.project_quick_slots();ArsenalScope stock(session->arsenal,arsenal::NativeWalloperKey);quick_init_original(element);}
+ // When EQS is present, its native page-one save and HUD cache must remain
+ // authoritative. Projecting the one-page Revolverator favourites here
+ // would also invalidate EQS's strict HUD layout check on later pages.
+ const bool eqs_present=eqs_probe::installed();
+ if(session){
+  if(!eqs_present)session->arsenal.project_quick_slots();
+  ArsenalScope stock(session->arsenal,arsenal::NativeWalloperKey);
+  quick_init_original(element);
+ }
  else quick_init_original(element);
- if(!session)return;
+ if(!session||eqs_present)return;
  auto& s=*session;auto& w=s.world;
  const auto records=w.level(0x17dac0);
  if(!Memory::valid(records,8*0x1c))return;
@@ -438,6 +447,9 @@ void quick_init(unsigned element){
 }
 arsenal::WeaponKey selected_quick(unsigned element){
  if(!session||!Memory::valid(element,0x80))return 0;
+ // Never reuse page-one logical identity to select a secondary-page weapon.
+ // Native weapons may still equip through the underlying game logic.
+ if(eqs_probe::gameplay_secondary())return 0;
  const int slot=session->world.read<int>(element+0x74);
  return slot>=0&&slot<8?session->registry.quick()[unsigned(slot)]:0;
 }
@@ -454,6 +466,7 @@ void quick_update(unsigned element){
 }
 int quick_draw(unsigned element){
  if(!session)return quick_draw_original(element);
+ if(eqs_probe::gameplay_secondary())return quick_draw_original(element);
  auto& s=*session;const auto key=selected_quick(element);int result;
  {ArsenalScope view(s.arsenal,key?key:s.registry.equipped());
   result=s.presentation.draw_quick_selector(element,quick_draw_original,s.registry.quick());}
