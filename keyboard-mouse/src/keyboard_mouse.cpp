@@ -43,6 +43,8 @@
 #include "openrac/games/rac1.hpp"
 #include "openrac/mod.hpp"
 
+namespace kbm_rac2 { void load(openrac::Mod& mod); }
+
 namespace {
 
 using openrac::gaddr;
@@ -1351,7 +1353,11 @@ const kbm::Disc* find_disc(const openrac::Mod& mod) {
 // and hooks the pad and the follow camera. Throws when the game, the port or the disc is not one it
 // works with.
 void load(openrac::Mod& mod) {
-    // This mod is for Ratchet & Clank only.
+    // RAC2 uses shared host input and a separate, game-specific implementation.
+    if (mod.game() == "rac2") {
+        kbm_rac2::load(mod);
+        return;
+    }
     if (mod.game() != "rac1") {
         throw openrac::Error("this mod is for Ratchet & Clank");
     }
@@ -1385,4 +1391,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("keyboard-mouse", "1.2.6", load)
+OPENRAC_MOD_CPP("keyboard-mouse", "1.2.7-rac2-alpha.1", load)
