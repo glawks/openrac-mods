@@ -153,11 +153,12 @@ private:
             }
         } else if (menu) {
             v.held = kbm::buttons_for(Context::Menu, held, -1);
-            if (phase == OPENRAC_PLAY_FRONT_END
-                && (on(Action::MenuConfirm) || on(Action::Jump))) {
-                // Title's Press Start prompt; menus also take Cross.
-                v.held = static_cast<std::uint16_t>(v.held | kbm::kStart);
-            }
+            // Do not combine Start with Cross in the front-end menu.
+            // RAC2 uses Cross for selection, and an additional Start press
+            // was backing out of New Game / Load / Options instead.
+            // A title-screen Start shortcut must be implemented separately,
+            // after identifying the title's state rather than assuming every
+            // OPENRAC_PLAY_FRONT_END phase is the Press Start screen.
             const std::array<Action, 4> directions = {
                 Action::MenuUp, Action::MenuDown,
                 Action::MenuLeft, Action::MenuRight
