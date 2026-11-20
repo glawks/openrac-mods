@@ -6,7 +6,7 @@
 # port loads it.
 
 # The mod's library and the manifest it is packaged with.
-openrac_add_mod(keyboard_mouse MANIFEST openrac-mod.json SOURCES src/keyboard_mouse.cpp)
+openrac_add_mod(keyboard_mouse MANIFEST openrac-mod.json SOURCES src/keyboard_mouse.cpp src/rac2/keyboard_mouse.cpp)
 target_include_directories(keyboard_mouse PRIVATE src)
 # Warnings on, for compilers that take these flags.
 if(NOT MSVC)
