@@ -267,6 +267,7 @@ Path prepared_graphics(const Path& levels,const Path& mod,const Path& cache,cons
     if(fs::is_directory(mod/"assets/graphics"))return mod/"assets/graphics";
     const auto script=mod/"tools/prepare_runtime_assets.py";require_file(script);
     require_file(mod/"tools/build_model_pack.py");require_file(mod/"tools/build_golden_assets.py");
+    require_file(mod/"tools/build_tip_glow.py");require_file(mod/"tools/build_vent_glow.py");
 #ifdef _WIN32
     const auto python=interpreter.empty()?official_python():absolute_path(interpreter);require_file(python);
     fs::create_directories(cache);
@@ -344,6 +345,7 @@ NativeAssetBundle::NativeAssetBundle(Paths paths,unsigned required_format,const 
     require_file(ammo);require_file(mod/"assets/ammunition/texture.png");
     const auto graphics=prepared_graphics(levels,mod,cache,version,paths.preparation_python);
     const bool derived=graphics!=mod/"assets/graphics";
+    if(derived)glow_root_="generated-glow/"+utf8(graphics.filename());
     struct Staged {Path original;std::string text;};
     std::vector<Staged> manifests;manifests.reserve(19);
     for(unsigned level=0;level<19;++level){

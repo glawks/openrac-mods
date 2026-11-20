@@ -1,11 +1,10 @@
 # Release packaging and provenance
 
-The Windows archive is revolverator-0.4.0-windows-x86_64.zip with
+The Windows archive is revolverator-0.4.3-windows-x86_64.zip with
 openrac-mod.json at its root. The manifest names author **noire342**,
-version 0.4.0, GPL-3.0-or-later and minimum mod interface 1.12. Use
-`revolverator-v0.4.0` as the release tag. The receipt identifies the exact
-binaries and records PAL checks for the Umbris checkpoint, standard combat,
-crate throws and the Nanotech trail.
+version 0.4.3, GPL-3.0-or-later and minimum mod interface 1.12. Use
+`revolverator-v0.4.3` as the release tag. The receipt identifies the exact
+binaries and records the PAL save recovery and Hoven shop checks.
 
 ## Installable files
 
@@ -24,8 +23,9 @@ tools/authored_audio.py. No extracted game sounds are distributed.
 
 Exclude game files and derived copies: the Hoven drill, native textures,
 recoloured native atlases, native HUD pixels, extracted levels, game code/data,
-ISOs and private generated HD headers. Reconstruction happens locally from
-the player's own disc. Also exclude toolchains, SDK files, RAM dumps, cards,
+ISOs, private generated HD headers, and the fitted vent and tip heat meshes.
+The preparation scripts generate the glow effect locally from the Hoven model.
+Also exclude toolchains, SDK files, RAM dumps, cards,
 sidecars, profiles, credentials and local QA helpers.
 
 The ammunition mesh and painted texture are original AI-assisted artwork.

@@ -5,6 +5,8 @@
 #include <openrac/openrac_mod.h>
 #include <array>
 #include <algorithm>
+#include <string>
+#include <utility>
 
 namespace revolverator {
 
@@ -16,11 +18,12 @@ public:
     ~NativeGlowProp(){reset();}
     NativeGlowProp(const NativeGlowProp&)=delete;
     NativeGlowProp& operator=(const NativeGlowProp&)=delete;
+    void set_path(std::string path){reset();path_=std::move(path);}
 
     void prime(){
         if(requested_||!mod_||api_->api_minor<12||!api_->prop_create||!api_->prop_pose||
            !api_->prop_hide||!api_->prop_remove)return;
-        id_=api_->prop_create(mod_,path_);
+        id_=api_->prop_create(mod_,path_.c_str());
         requested_=true;
     }
 
@@ -50,7 +53,7 @@ public:
 private:
     const openrac_api* api_;
     openrac_mod* mod_;
-    const char* path_;
+    std::string path_;
     int id_=-1;
     bool visible_{},requested_{};
 };

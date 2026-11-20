@@ -21,7 +21,8 @@ AUTHORED_ART={
     'assets/ammunition/model.glb':'1fa448c38e20beb3440005d4c854ecef88e2fb2e956f42674d7086ef57d78c99',
     'assets/ammunition/texture.png':'648821f6b402885c23fd6b47a219a48a078aa194fecdfd58583d66d94d1918a9',
 }
-PREPARERS=('prepare_runtime_assets.py','build_model_pack.py','build_golden_assets.py')
+PREPARERS=('prepare_runtime_assets.py','build_model_pack.py','build_golden_assets.py',
+           'build_tip_glow.py','build_vent_glow.py')
 
 def digest(data: bytes) -> str:return hashlib.sha256(data).hexdigest()
 def document(path: Path):return json.loads(path.read_text(encoding='utf-8-sig'))

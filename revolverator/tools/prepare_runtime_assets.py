@@ -5,8 +5,9 @@
 
 No game artwork is bundled with this script. The official Windows install's
 own Python runs it before the native manifest overlay is published. Inputs are
-read-only, the content-addressed cache is outside game and mod directories, and
-an atomic receipt is published only after every generated file is complete.
+read-only and the content-addressed cache is outside game and mod directories.
+The SDK reads props relative to the mod, so verified glow assets are also
+staged into a generated subdirectory of the installed package.
 """
 from __future__ import annotations
 import argparse
@@ -22,8 +23,12 @@ import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_model_pack import read_glb, retarget, write_glb
 from build_golden_assets import golden_model
+from build_tip_glow import BAND_COUNT, build_tip_glow
+from build_vent_glow import build_vent_glow
 
-RECIPE_VERSION = 1
+RECIPE_VERSION = 2
+GLOW_FILES = ('vent-heat/slots.glb', 'vent-heat/mask.png', 'tip-heat/mask.png',
+              *(f'tip-heat/band-{i}.glb' for i in range(1, BAND_COUNT+1)))
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 
 def digest(data: bytes) -> str:
@@ -147,7 +152,8 @@ def prepare(levels: Path, cache: Path, version: str) -> Path:
     for i,m in enumerate(manifests):
         info=m['classes']['moby']['180'];path=beneath(levels/f'level_{i:02}'/info['mesh'],levels)
         inputs[str(path)]=digest(path.read_bytes());targets.append((info,read_glb(path)))
-    for filename in ('prepare_runtime_assets.py','build_model_pack.py','build_golden_assets.py'):
+    for filename in ('prepare_runtime_assets.py','build_model_pack.py','build_golden_assets.py',
+                     'build_tip_glow.py','build_vent_glow.py'):
         path=Path(__file__).parent/filename;inputs[filename]=digest(path.read_bytes())
     key=digest(json.dumps({'recipe':RECIPE_VERSION,'version':version,'inputs':inputs},sort_keys=True).encode())
     # Native Windows file readers may still use MAX_PATH even though Python's
@@ -159,6 +165,7 @@ def prepare(levels: Path, cache: Path, version: str) -> Path:
     expected_files={f'level_{i:02}/{part}' for i in range(19) for part in
                     ('mobys/moby_2017.glb','mobys/moby_2018.glb','textures/base.png','textures/gold.png')}
     expected_files.add('level_01/mobys/moby_2019.glb')
+    expected_files.update(f'glow/{name}' for name in GLOW_FILES)
     if ready.is_file():
         try:receipt=json.loads(ready.read_text())
         except (ValueError,OSError):receipt={}
@@ -182,8 +189,9 @@ def prepare(levels: Path, cache: Path, version: str) -> Path:
         if i==1:
             display,_=golden_model(normal,True);(base/'mobys/moby_2019.glb').write_bytes(model_texture(display,'../textures/gold.png'))
         normal.write_bytes(model_texture(model,'../textures/base.png'))
+    build_vent_glow(source_path, root/'glow/vent-heat', float(source_info['scale']))
+    build_tip_glow(source_path, root/'glow/tip-heat')
     for relative in sorted(expected_files):result[relative]=digest((root/relative).read_bytes())
-    if len(result)!=77:raise ValueError('Incomplete generated model set')
     receipt={'format':1,'key':key,'version':version,'files':result,'inputs':inputs,'derived_on_player_machine':True}
     fd,temp=tempfile.mkstemp(prefix='ready-',suffix='.json',dir=root)
     with os.fdopen(fd,'w',encoding='utf-8') as f:json.dump(receipt,f,indent=2);f.write('\n')
@@ -194,13 +202,33 @@ def prepare(levels: Path, cache: Path, version: str) -> Path:
         if digest(Path(name).read_bytes())!=expected:raise ValueError('Native source changed while preparing art')
     return root
 
+def stage_glow_assets(root: Path, module: Path):
+    props = module/'generated-glow'/root.name
+    for relative in GLOW_FILES:
+        target = props/relative
+        if not target.resolve().is_relative_to(module):
+            raise ValueError('Generated glow path escapes the installed mod')
+        desired = (root/'glow'/relative).read_bytes()
+        if target.is_file() and target.read_bytes() == desired:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd, staged = tempfile.mkstemp(prefix='.glow-', suffix='.tmp', dir=target.parent)
+        try:
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(desired)
+            os.replace(staged, target)
+        finally:
+            Path(staged).unlink(missing_ok=True)
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--levels',type=Path,required=True);p.add_argument('--cache',type=Path,required=True)
     p.add_argument('--version',choices=('pal','ntsc'),required=True);p.add_argument('--result',type=Path,required=True)
     a=p.parse_args();root=prepare(a.levels,a.cache,a.version)
+    stage_glow_assets(root, Path(__file__).resolve().parents[1])
     a.result.parent.mkdir(exist_ok=True,parents=True)
     a.result.write_text(str(root),encoding='utf-8')
-    print(json.dumps({'derived_on_player_machine':True,'version':a.version,'generated_files':77,'key':root.name}))
+    print(json.dumps({'derived_on_player_machine':True,'version':a.version,
+                      'generated_files':77+len(GLOW_FILES),'key':root.name}))
 
 if __name__=='__main__':main()

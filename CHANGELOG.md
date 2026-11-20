@@ -1,5 +1,15 @@
 # Changelog
 
+## Rotatore / Revolverator 0.4.3 — 2026-11-20
+
+- Move old Revolverator save companions out of the memory card before the title
+  screen lists slots. Restore matching weapon progress and keep incompatible
+  or corrupt records for recovery. The native save is preserved.
+- Show the Revolverator in both Gadgetron weapon previews at Hoven, with the
+  drill head attached while the hologram rotates.
+- Include the 0.4 combat and presentation changes in the public release.
+  Generate the vent and drill glow graphics from the local game assets.
+
 ## Rotatore / Revolverator 0.3.4 — 2026-11-19
 
 - Fix the crash when collecting the Pilot's Helmet on Gaspar. Leave native

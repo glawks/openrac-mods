@@ -20,3 +20,4 @@ __pycache__/
 *.bak
 native-levels/
 local-assets/
+/revolverator/generated-glow/

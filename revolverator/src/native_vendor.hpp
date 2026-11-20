@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #pragma once
-#include "memory.hpp"
+#include "native_rotor.hpp"
 #include <array>
 #include <cstdint>
 
 namespace revolverator {
 class NativeArsenal;
+class NativeWeaponAlias;
 
-// Price, transient vendor-list and ammunition-preview policy. The native game owns its
+// Price, transient vendor-list and preview policy. The native game owns its
 // saved stock, planet visits, inventory grants, purchases, ammunition and bolts.
 class NativeVendor final : public Memory {
 public:
@@ -17,10 +18,7 @@ public:
     static constexpr int normal_price=15000;
     static constexpr const char* build_hook="rac1.vendor.build_item_list";
     static constexpr const char* build_signature="void(i32)";
-    static constexpr const char* preview_hook="rac1.vendor.render_screens";
-    static constexpr const char* preview_signature="void(u32)";
-
-    explicit NativeVendor(const openrac_api* api);
+    NativeVendor(const openrac_api* api,NativeWeaponAlias& weapon_alias,GuestArena& arena);
     ~NativeVendor();
     NativeVendor(const NativeVendor&)=delete;
     NativeVendor& operator=(const NativeVendor&)=delete;
@@ -41,9 +39,8 @@ public:
     unsigned icon_bank_for_row(unsigned row)const;
     void set_preview_class(unsigned klass){preview_class_=klass;}
 
-    // Bracket preview_hook with these calls. frame() restores the temporary
-    // render class after the deferred draw, before the next native menu update.
-    // Class11's world/entity update is not the open vendor menu's update.
+    // Bracket the native purchase update and selection initialization. frame()
+    // also restores the preview actors after the deferred draw.
     void before_vendor_update();
     void after_vendor_update();
 
@@ -59,6 +56,13 @@ private:
         int original_selection=0,applied_selection=0;
         bool active=false;
     } menu_;
+    struct WeaponPreview {
+        NativeRotor pose;
+        unsigned actor=0;
+        WeaponPreview(const openrac_api* api,GuestArena& arena):pose(api,arena,false,true){}
+    };
+    NativeWeaponAlias& weapon_alias_;
+    std::array<WeaponPreview,2> weapon_previews_;
     int level_=-1;
     NativeArsenal* arsenal_{};
     unsigned build_previous_=18;

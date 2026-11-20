@@ -152,17 +152,21 @@ def band_model(band, points, normals, texture):
     return write_glb(model, payload)
 
 
+def build_tip_glow(source: Path, output: Path):
+    surface = glow_surface(head_geometry(source))
+    bands = [band_model(band, *fitted_band(surface, band)) for band in range(BAND_COUNT)]
+    output.mkdir(parents=True, exist_ok=True)
+    for band, model in enumerate(bands, 1):
+        (output / f"band-{band}.glb").write_bytes(model)
+    (output / "mask.png").write_bytes(glow_mask())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="moby_164.glb from Hoven")
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
-    surface = glow_surface(head_geometry(args.source))
-    bands = [band_model(band, *fitted_band(surface, band)) for band in range(BAND_COUNT)]
-    args.output.mkdir(parents=True, exist_ok=True)
-    for band, model in enumerate(bands, 1):
-        (args.output / f"band-{band}.glb").write_bytes(model)
-    (args.output / "mask.png").write_bytes(glow_mask())
+    build_tip_glow(args.source, args.output)
 
 
 if __name__ == "__main__":

@@ -52,6 +52,8 @@ ammunition art, preparation scripts and license notices. Required scripts are:
 - tools/prepare_runtime_assets.py
 - tools/build_model_pack.py
 - tools/build_golden_assets.py
+- tools/build_tip_glow.py
+- tools/build_vent_glow.py
 
 Do not include copied assets/graphics, copied or recoloured game atlases,
 embedded game-derived HD icon headers, extracted levels, ISOs, RAM dumps,
@@ -69,7 +71,9 @@ Players do not run these development commands. The official client contains
 Python, which the mod locates from the running client's installation. The
 helper uses only the standard library, reads the player's extracted Hoven
 drill and held-weapon skeletons, and generates the 19-level model set in a
-cache outside both game data and mod files.
+cache outside both game data and mod files. It also fits the vent and drill-tip
+glow effects to that disc. The SDK reads those props from the installed mod's
+generated-glow directory, where the helper stages the verified copies.
 
 The Golden model retains the base geometry and UVs. A local colour transform
 produces its warm-metal atlas from native shading and alpha. The static

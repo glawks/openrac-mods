@@ -32,7 +32,7 @@ using namespace revolverator;
 int grant(unsigned key,int equip);
 struct Session {
  const openrac_api* api;openrac_mod* mod;GuestArena arena,core_arena;arsenal::Registry registry;
- NativeAmmunition ammunition;NativeAmmoAlias alias;NativeVendor vendor;NativeVendorIcons vendor_icons;NativeWeaponVisual visuals;NativeEquipAudio equip_audio;NativeWorld world;Controller controller;Presentation presentation;
+ NativeAmmunition ammunition;NativeAmmoAlias alias;NativeWeaponVisual visuals;NativeVendor vendor;NativeVendorIcons vendor_icons;NativeEquipAudio equip_audio;NativeWorld world;Controller controller;Presentation presentation;
  NativeArsenal arsenal;NativeWeaponMenu menu;NativeArsenalSave saves;NativeArsenalXP xp;
  NativeGoldVendor gold_vendor;NativeAcquisition acquisition;
  bool primary=false;unsigned epoch=0;int level=-1;
@@ -40,7 +40,7 @@ struct Session {
  bool golden()const{const auto* state=registry.state(arsenal::RevolveratorKey);return state&&state->owned&&state->golden;}
  unsigned grant_override=0,native_save_depth=0;bool new_game_plus=false;
  std::deque<NativeArsenalXP::LevelUp> animations,events;
- Session(const openrac_api* a,openrac_mod* m):api(a),mod(m),ammunition(a,&arena,true),alias(a),vendor(a),vendor_icons(a,vendor),visuals(a,arena,core_arena,m),equip_audio(a),world(a,m,ammunition,visuals.held_rotor(),core_arena),controller(world),presentation(a,m,&arena,true),arsenal(a,registry,presentation),menu(a,arena,arsenal),saves(a,m,arsenal),xp(a,m,arsenal),gold_vendor(a,m,registry,visuals.native_alias()),acquisition(a,m,arena,{this,
+ Session(const openrac_api* a,openrac_mod* m):api(a),mod(m),ammunition(a,&arena,true),alias(a),visuals(a,arena,core_arena,m),vendor(a,visuals.native_alias(),arena),vendor_icons(a,vendor),equip_audio(a),world(a,m,ammunition,visuals.held_rotor(),core_arena),controller(world),presentation(a,m,&arena,true),arsenal(a,registry,presentation),menu(a,arena,arsenal),saves(a,m,arsenal),xp(a,m,arsenal),gold_vendor(a,m,registry,visuals.native_alias()),acquisition(a,m,arena,{this,
   +[](void* user){auto& s=*static_cast<Session*>(user);s.presentation.set_golden(s.golden());s.arsenal.project(arsenal::RevolveratorKey);},
   +[](void* user){static_cast<Session*>(user)->restore_context();},
   +[](void* user,unsigned actor){auto& s=*static_cast<Session*>(user);
@@ -601,10 +601,13 @@ extern "C" OPENRAC_MOD_EXPORT const revolverator_api_v1* openrac_revolverator_qu
 extern "C" OPENRAC_MOD_EXPORT int openrac_mod_load(const openrac_api* api,openrac_mod* mod){
  try{
   if(!api||!api->memory||!api->game||std::strcmp(api->game,"rac1")||!RegionBindings::for_version(api->version))throw std::runtime_error("Revolverator requires Ratchet & Clank PAL Europe v2.00 or NTSC-U and matching Arsenal Compatibility");
+  // Move legacy save companions before preparing graphics: a failed graphics
+  // setup should not leave the game's native card unreadable.
+  session=std::make_unique<Session>(api,mod);
   weapon_assets=std::make_unique<NativeAssetBundle>(api->api_minor>=10?4u:3u,api->version);
+  session->visuals.set_glow_root(weapon_assets->glow_root());
   compatibility_modules=std::make_unique<NativeCompatibilityModules>(api,mod,weapon_assets->configuration());
   runtime_hooks=std::make_unique<NativeRuntimeHooks>(api,mod);
-  session=std::make_unique<Session>(api,mod);
   hook("rac1.level.load_gameplay","u32(i32)",reinterpret_cast<void*>(load),reinterpret_cast<void**>(&load_original));
   hook("rac1.pad.process_report","void(u32,u32,i32)",reinterpret_cast<void*>(pad),reinterpret_cast<void**>(&pad_original));
   hook("rac1.player.update_motion_input","void()",reinterpret_cast<void*>(motion_input),reinterpret_cast<void**>(&motion_input_original));

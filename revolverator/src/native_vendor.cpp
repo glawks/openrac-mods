@@ -3,6 +3,7 @@
 #include "native_vendor.hpp"
 #include "native_ammunition.hpp"
 #include "native_arsenal.hpp"
+#include "native_weapon_alias.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -21,7 +22,8 @@ constexpr unsigned vendor_item_slots=0x1c8ff0;
 constexpr unsigned game_mode=0x15f5c4;
 }
 
-NativeVendor::NativeVendor(const openrac_api* api):Memory(api){}
+NativeVendor::NativeVendor(const openrac_api* api,NativeWeaponAlias& weapon_alias,GuestArena& arena)
+    :Memory(api),weapon_alias_(weapon_alias),weapon_previews_{{{api,arena},{api,arena}}}{}
 NativeVendor::~NativeVendor(){reset();}
 bool NativeVendor::supported() const {
     return api_&&api_->memory&&api_->game&&api_->version&&
@@ -185,6 +187,11 @@ bool NativeVendor::preview_valid(const PreviewLease& preview) const {
         read<unsigned>(preview.address+0x38)==preview.stamp;
 }
 void NativeVendor::before_vendor_update() {
+    for(auto& preview:weapon_previews_){
+        preview.pose.reset();
+        if(preview.actor)weapon_alias_.apply_preview(preview.actor,false);
+        preview.actor=0;
+    }
     for(auto& preview:previews_){
         if(preview_valid(preview)&&read<std::uint16_t>(preview.address+0xa6)==NativeAmmunition::visual_class){
             if(preview.fitted){
@@ -207,9 +214,23 @@ void NativeVendor::after_vendor_update() {
     const int count=read<int>(base+count_offset),selected=read<int>(base+selection_offset);
     if(count<=0||count>16||selected<0||selected>=count)return;
     const auto row=read<Row>(base+rows_offset+unsigned(selected)*sizeof(Row));
-    if(row.item!=item_id||row.is_ammo!=1||read<std::uint16_t>(price_address_+8)==0)return;
     const unsigned list=read<unsigned>(base+0x20);
-    if(!valid(list,0x600))return;
+    if(row.item!=item_id||!valid(list,0x600))return;
+    if(row.is_ammo==0&&custom_row(row)){
+        // The details monitor and the hologram rotate independently. Keep
+        // their native root motion and replace the Walloper's child poses.
+        constexpr std::array<unsigned,2> offsets{{0x100,0x300}};
+        for(unsigned i=0;i<offsets.size();++i){
+            auto& preview=weapon_previews_[i];
+            const unsigned actor=list+offsets[i];
+            if(read<std::uint8_t>(actor+0x20)>=0x80)continue;
+            preview.pose.update(actor,0,Phase::Idle,0,0,0,false,true);
+            if(weapon_alias_.apply_preview(actor,true))preview.actor=actor;
+            else preview.pose.reset();
+        }
+        return;
+    }
+    if(row.is_ammo!=1||read<std::uint16_t>(price_address_+8)==0)return;
     // The details monitor always draws slot1, even on an ammunition row.
     // Slot2 is the separate world hologram; slot3 remains the unowned weapon.
     // Keep both render aliases alive until the frontend has consumed its
@@ -256,6 +277,7 @@ void NativeVendor::reset() {
             write(preview_model_address_,original_preview_model_);
     }
     menu_={};level_=-1;price_address_=0;original_price_=0;price_owned_=false;
+    for(auto& preview:weapon_previews_){preview.pose.reset(true);preview.actor=0;}
     previews_={};preview_model_address_=0;original_preview_model_=0;preview_model_owned_=false;
     native_icon_bank_=0;native_icon_captured_=false;
 }

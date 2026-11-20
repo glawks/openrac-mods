@@ -2,6 +2,7 @@
 // Copyright (c) 2026 noire342
 #include "native_vendor_icons.hpp"
 #include "native_vendor.hpp"
+#include "native_weapon_alias.hpp"
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +26,8 @@ Fixture* live;
 struct Fixture {
     std::vector<unsigned char> ram=std::vector<unsigned char>(0x2000000);
     openrac_api api{};
+    NativeWeaponAlias weapon_alias;
+    GuestArena arena;
     NativeVendor vendor;
     NativeVendorIcons icons;
     std::vector<Rectangle> rectangles;
@@ -59,7 +62,7 @@ struct Fixture {
         api.loaded_level=loaded;api.relocate_data=relocate;api.relocate_level_data=relocate_level;api.function=function;
         return &api;
     }
-    Fixture():vendor(prepare(this)),icons(&api,vendor){
+    Fixture():weapon_alias(prepare(this)),vendor(&api,weapon_alias,arena),icons(&api,vendor){
         put(resident+0x18,native_tables);put(overlay+0x18,previous_tables);put(0x15f5c4,5);
         for(unsigned i=0;i<37;++i)put<unsigned short>(0x1863d0+i*76+0x38,static_cast<unsigned short>(60000+i));
         put(0x1c40b0+18*24,7500);put<unsigned short>(0x1c40b0+18*24+8,0);

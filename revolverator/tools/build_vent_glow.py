@@ -95,12 +95,8 @@ def glow_mask():
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", type=Path, help="moby_164.glb from Hoven")
-    parser.add_argument("output", type=Path)
-    args = parser.parse_args()
-    points, normals, texture = fitted_slots(args.source, .08294187486171722)
+def build_vent_glow(source: Path, output: Path, scale: float):
+    points, normals, texture = fitted_slots(source, scale)
     payload = bytearray()
     views, accessors = [], []
     for vectors, fmt, kind in ((points, "<3f", "VEC3"), (normals, "<3f", "VEC3"), (texture, "<2f", "VEC2")):
@@ -122,9 +118,17 @@ def main():
         "materials": [{"alphaMode": "BLEND", "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}],
         "bufferViews": views, "accessors": accessors,
     }
-    args.output.mkdir(parents=True, exist_ok=True)
-    (args.output / "slots.glb").write_bytes(write_glb(model, payload))
-    (args.output / "mask.png").write_bytes(glow_mask())
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "slots.glb").write_bytes(write_glb(model, payload))
+    (output / "mask.png").write_bytes(glow_mask())
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", type=Path, help="moby_164.glb from Hoven")
+    parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+    build_vent_glow(args.source, args.output, .08294187486171722)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,11 @@ NativeWeaponVisual::NativeWeaponVisual(const openrac_api* api,GuestArena& level_
                 {api,mod,"assets/tip-heat/band-3.glb"},{api,mod,"assets/tip-heat/band-4.glb"}}}{}
 
 void NativeWeaponVisual::begin_native_frame(){alias_.frame(true);}
+void NativeWeaponVisual::set_glow_root(const std::string& root){
+    vent_heat_.set_path(root+"/vent-heat/slots.glb");
+    for(unsigned i=0;i<tip_heat_.size();++i)
+        tip_heat_[i].set_path(root+"/tip-heat/band-"+std::to_string(i+1)+".glb");
+}
 void NativeWeaponVisual::restore_native(){alias_.frame();}
 void NativeWeaponVisual::set_mode(int mode){
     if(mode!=3){standalone_.reset();equipped_.reset();}

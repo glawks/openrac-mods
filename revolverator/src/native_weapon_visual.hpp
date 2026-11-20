@@ -35,6 +35,7 @@ public:
     NativeWeaponVisual(const NativeWeaponVisual&)=delete;
     NativeWeaponVisual& operator=(const NativeWeaponVisual&)=delete;
     void begin_native_frame();
+    void set_glow_root(const std::string& root);
     void restore_native();
     void set_mode(int native_mode);
     void update_held(const HeldState&);

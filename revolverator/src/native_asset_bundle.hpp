@@ -47,6 +47,7 @@ public:
     NativeAssetBundle& operator=(NativeAssetBundle&&) = delete;
 
     std::filesystem::path configuration() const { return configuration_; }
+    const std::string& glow_root() const { return glow_root_; }
 
 private:
     void cleanup() noexcept;
@@ -54,6 +55,7 @@ private:
     std::filesystem::path cache_root_;
     std::filesystem::path session_;
     std::filesystem::path configuration_;
+    std::string glow_root_="assets";
     std::vector<std::filesystem::path> files_;
     bool owns_session_ = false;
 };
