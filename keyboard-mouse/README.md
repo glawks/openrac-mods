@@ -9,6 +9,24 @@ Without this mod, OpenRAC has a fixed keyboard layout of its own (WASD and
 IJKL as the two sticks) and the mouse does nothing. With it on, that layout
 is replaced by the bindings below, and you can change every one of them.
 
+## Experimental RAC2 support (fork only)
+
+This fork's `rac2-keyboard-mouse` branch adds an **untested, early RAC2 implementation**
+for NTSC-U v1.01 (`ntsc`), PAL (`pal`) and NTSC-U v2.00 (`ntsc2`).
+RAC1's original input and direct camera implementation is kept unchanged.
+
+The first RAC2 test uses WASD movement, jump, fire, wrench, pause, menus,
+right-click Quick Select and a mouse-to-right-stick camera. A plugged-in pad
+continues to work. Mouse aiming is not yet direct, and the Quick Select's
+stick selection needs in-game validation. RAC2's number-key weapon hotkeys,
+mouse wheel weapon switching, mouse hover menus and camera-reset shortcut
+are **not yet implemented**. Please do not test this as a production release.
+
+Testing: get a build artifact from this fork's RAC2 keyboard/mouse CI run,
+install the packaged ZIP manually in the OpenRAC launcher, and verify movement,
+mouse look, pausing and the ring first. Record the disc region and game log.
+Do not open a PR to the upstream mod until the behaviour is confirmed.
+
 ## Install
 
 1. Open the OpenRAC launcher and go to **Mods**.
