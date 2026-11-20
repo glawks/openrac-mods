@@ -40,6 +40,7 @@ public:
  bool throw_strike_active()const override;
  bool throw_contact_reached()const override;
  void launched(Target target,float throw_charge,float blast_charge)override;
+ void drill_overheat()override;
  void impact_result(Target target,const ImpactContext& result)override;
  void cancelled()override;
  void attack_cancelled()override;
@@ -117,6 +118,7 @@ private:
  Frame last_frame_{};
  struct Shot {Target weapon{},body{};float multiplier=1.f,yaw{};};
  Target recoil_body_{};
+ struct PendingBurn {Target player{};float remaining{};} pending_burn_;
  Target throw_animation_body_{},throw_animation_weapon_{};
  std::uint64_t golden_explosions_{},golden_hits_{};
  int level_=-1;
@@ -137,6 +139,7 @@ private:
  bool crate_position_available(const Lease& lease,Vec3 origin)const;
  Vec3 drop_fallback(const Lease& lease,bool try_ground=false)const;
  bool counterstrike(Target enemy);
+ void post_drill_burn();
  Flight* flight(Target target);
  const Flight* flight(Target target)const;
  Lease* owned_lease(Target target);

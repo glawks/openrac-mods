@@ -57,7 +57,7 @@ struct MultiFake:World {
  struct Hit {Target target{};float charge{},blast{};ImpactReason reason{};};
  std::vector<Hit> impacts;std::vector<Motion> motions;
  std::function<void()> on_impact;
- int ammunition=64,attempts=0,captures=0,restores=0,drops=0,all_cancels=0,gesture_cancels=0;
+ int ammunition=64,attempts=0,captures=0,restores=0,drops=0,all_cancels=0,gesture_cancels=0,burns=0;
  std::array<float,16> charge{},blast{};
  Target force_target{};
  MultiFake(){for(unsigned i=0;i<actors.size();++i)actors[i].target={0x20000+i*256,0x40000+i*128,459,i+1};}
@@ -82,6 +82,7 @@ struct MultiFake:World {
  void discarded(Target target)override{if(auto* a=actor(target))a->leased=a->flying=false;}
  void cancelled()override{++all_cancels;for(auto& a:actors)a.leased=a.flying=false;}
  void attack_cancelled()override{++gesture_cancels;}
+ void drill_overheat()override{++burns;}
  void animate(Motion motion)override{motions.push_back(motion);}
 };
 void finish_throw(Controller& c,const Frame& f){
@@ -96,6 +97,45 @@ void launch(Controller& c,Frame& f){
  finish_throw(c,f);
 }
 int main(){
+ for(unsigned hz:{50u,60u}){
+  for(bool cooling:{false,true}){
+   MultiFake w;Controller c(w);auto f=frame();f.seconds=1.f/float(hz);
+   capture_only(c,f);
+   steps(c,f,2*hz);
+   CHECK(c.drill_glow()==DrillGlow{});
+   steps(c,f,hz/2);
+   CHECK(c.drill_glow()[0]>0.f&&c.drill_glow()[1]==0.f);
+   finish_throw(c,f);
+   CHECK(w.burns==0&&c.drill_glow()[0]==1.f&&c.drill_glow()[1]==0.f);
+   f.primary=false;
+   if(cooling)steps(c,f,2*hz);
+   else steps(c,f,2);
+   for(int shot=2;shot<=5;++shot){
+    launch(c,f);
+    const int trigger=cooling?5:4;
+    CHECK(w.burns==int(shot>=trigger));
+    steps(c,f,2);
+   }
+   const auto hot=c.drill_glow();f.paused=true;
+   steps(c,f,6*hz);CHECK(c.drill_glow()==hot);
+   f.paused=false;
+   steps(c,f,6*hz);CHECK(c.drill_glow()==DrillGlow{});
+   launch(c,f);CHECK(c.drill_glow()==DrillGlow{}&&w.burns==1);
+   if(!cooling){
+    steps(c,f,2);capture_only(c,f);steps(c,f,2*hz+hz/2);
+    finish_throw(c,f);f.primary=false;steps(c,f,2);
+    for(int shot=2;shot<=4;++shot){launch(c,f);steps(c,f,2);}
+    CHECK(w.burns==2);
+   }
+   c.cancel();
+  }
+ }
+ {
+  MultiFake w;w.actors[0].target.klass=500;Controller c(w);auto f=frame();
+  capture_only(c,f);steps(c,f,175);
+  CHECK(c.drill_glow()==DrillGlow{});
+  finish_throw(c,f);CHECK(w.burns==0&&c.drill_glow()==DrillGlow{});
+ }
  struct GagFake final:Fake {
   int gag_attempts=0;
   bool try_capture_gag(const Frame&)override{++gag_attempts;return true;}

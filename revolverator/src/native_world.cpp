@@ -452,6 +452,33 @@ void NativeWorld::launched(Target target,float,float blast_charge){
   recoil_body_=shot.body;recoil_.start(last_frame_);enforce_release_recoil();
  }
 }
+void NativeWorld::drill_overheat(){
+ if(active_&&last_frame_.playing&&!last_frame_.paused&&last_frame_.equipped&&last_frame_.alive)
+  pending_burn_={token(body()),.75f};
+}
+void NativeWorld::post_drill_burn(){
+ if(!pending_burn_.player)return;
+ const auto player=pending_burn_.player;
+ pending_burn_.remaining-=last_frame_.seconds;
+ if(pending_burn_.remaining<=0.f||player.klass!=0||player.address!=body()||!identity_valid(player)||
+    read<int>(hero()+0x22a8)<=0){
+  pending_burn_={};return;
+ }
+ // The native strike ignores incoming hit packets. Post as soon as the hero
+ // can receive a normal hit, after the captured enemy has detached.
+ if(read<unsigned>(hero()+hero_state_offset)>3||read<unsigned>(hero()+hero_control_mode_offset)>1)return;
+ pending_burn_={};
+ constexpr std::size_t required=offsetof(openrac_api,moby_slot_of)+sizeof(api_->moby_slot_of);
+ if(!mod_||api_->size<required||!api_->moby_slot_of||!api_->moby_hit)return;
+ const auto position=read<Vec3>(hero()+0x80);
+ if(!finite(position))return;
+ const int victim=api_->moby_slot_of(player.address);
+ if(victim<0)return;
+ // Use the native environmental hit and let the hero manage invulnerability.
+ openrac_hit hit{};hit.size=sizeof(hit);hit.victim=victim;hit.attacker=-1;hit.mask=1;hit.damage=1.f;
+ hit.position[0]=position.x;hit.position[1]=position.y;hit.position[2]=position.z+.75f;
+ if(api_->moby_hit(mod_,&hit)==OPENRAC_HOOK_OK&&trace_)log("drill overheat: native hit queued for Ratchet");
+}
 void NativeWorld::impact_result(Target target,const ImpactContext& result){
  auto* entry=flight(target);if(!entry)return;
  const Shot shot=entry->shot;
@@ -524,11 +551,13 @@ void NativeWorld::observe_frame(const Frame& frame){
  contact_tip_.reset();
  const bool same_epoch=last_frame_.epoch==frame.epoch;
  last_frame_=frame;recoil_.tick(frame);frame_hits_=0;
- if(!same_epoch)gag_.reset();
+ if(!same_epoch){gag_.reset();pending_burn_={};}
  else if(gag_.active())gag_.tick(frame,token(body()),hero());
  if(throw_animation_body_&&!throw_strike_active())throw_animation_body_=throw_animation_weapon_={};
  if(same_epoch&&frame.playing&&!frame.paused&&frame.alive&&finite(frame.position)&&
-    std::isfinite(frame.yaw)&&std::isfinite(frame.seconds)&&frame.seconds>0&&frame.seconds<=.1f)drain_hits();
+    std::isfinite(frame.yaw)&&std::isfinite(frame.seconds)&&frame.seconds>0&&frame.seconds<=.1f){
+  post_drill_burn();drain_hits();
+ }
  if(!frame.equipped)arm_.reset();
 }
 bool NativeWorld::release_recoil_active()const{
@@ -599,6 +628,7 @@ void NativeWorld::finish_throw_animation(){
 void NativeWorld::attack_cancelled(){finish_throw_animation();recoil_.cancel();recoil_body_={};arm_.reset();sparks_.reset();contact_tip_.reset();}
 void NativeWorld::cancelled(){
  ++cancellation_generation_;
+ pending_burn_={};
  if(gag_.active())gag_camera_.reset();
  gag_.reset();
  restore_lease(lease_,true);

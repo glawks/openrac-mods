@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #pragma once
+#include "drill_temperature.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -70,6 +71,7 @@ public:
  virtual bool throw_strike_active()const{return true;}
  virtual bool throw_contact_reached()const{return true;}
  virtual void launched(Target,float /* throw_charge */,float /* blast_charge */){}
+ virtual void drill_overheat(){}
  virtual void impact_result(Target target,const ImpactContext& result){impact(target,result.other,result.charge);}
  virtual void cancelled(){}
  // Abandon one stale projectile, or the current gesture, without destroying
@@ -94,6 +96,7 @@ public:
  float charge()const;
  float blast_charge()const;
  float spin_angle()const{return angle_;}
+ DrillGlow drill_glow()const{return temperature_.glow();}
  const Counters& counters()const{return counters_;}
 private:
  World& world_; Settings settings_; Phase phase_=Phase::Idle;
@@ -107,6 +110,7 @@ private:
  std::uint64_t sequence_{},reset_generation_{};
  std::uint32_t epoch_{}; bool have_epoch_{},held_{},buffered_{},release_recovery_{};
  Counters counters_{};
+ DrillTemperature temperature_;
  void recover();
  void cancel_attack();
  void advance_flights(const Frame& frame);

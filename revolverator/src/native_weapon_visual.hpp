@@ -4,7 +4,7 @@
 #include "native_rotor.hpp"
 #include "native_weapon_alias.hpp"
 #include "native_valve_smoke.hpp"
-#include "native_vent_heat.hpp"
+#include "native_glow_prop.hpp"
 #include "valve_cycle.hpp"
 #include <optional>
 
@@ -26,6 +26,7 @@ public:
         // Logical inventory selection survives native pause menus temporarily
         // retiring/replacing the held actor. It is not Frame::equipped.
         bool logical_equipped{};
+        DrillGlow tip_heat{};
     };
     struct EquipEvent {unsigned actor{};};
     struct ValveEmission {Vec3 point;float scale,load;unsigned count;};
@@ -65,7 +66,9 @@ private:
     ValveCycle valve_cycle_;
     ValveFrame valve_frame_;
     NativeValveSmoke valve_smoke_;
-    NativeVentHeat vent_heat_;
+    NativeGlowProp vent_heat_;
+    std::array<NativeGlowProp,4> tip_heat_;
+    DrillGlow tip_glow_{};
     struct Identity {
         unsigned actor{},pclass{},pvars{},stamp{};
         bool operator==(const Identity& other)const{
@@ -77,6 +80,7 @@ private:
     NativeRotor& preview(Preview);
     Identity identity(unsigned actor)const;
     void restore_equipped_preview_hand(unsigned actor);
+    void update_glow(bool visible);
     void clear_held();
 };
 }

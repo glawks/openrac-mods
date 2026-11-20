@@ -2,11 +2,11 @@
   "format": 2,
   "id": "revolverator",
   "name": "Revolverator",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "author": "lorenzogarrone",
   "license": "GPL-3.0-or-later",
   "api": "1.12",
-  "description": "Restores the Revolverator as a separate weapon with native menus, 20 rounds, independent saves and optional Weapon XP. Release early to drop a captured enemy; fill the charge bar to throw. Includes a Golden upgrade and contact sparks, with the original game sounds. PAL reference with NTSC-U bindings.",
+  "description": "Restores the Revolverator as a separate weapon with native menus, 20 rounds, independent saves and optional Weapon XP. Charged throws can heat the drill until it burns Ratchet. Includes a Golden upgrade, contact sparks and the original game sounds. PAL reference with NTSC-U bindings.",
   "extensions": {
     "noire342.arsenal": {
       "version": 1,

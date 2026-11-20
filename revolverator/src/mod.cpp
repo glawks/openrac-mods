@@ -132,7 +132,7 @@ struct Session {
   const auto held=world.weapon();
   const bool gag=world.gag_active();
   visuals.update_held({held,ammunition.count(),gag?Phase::Spinning:controller.attack_phase(),controller.charge(),
-    gag?world.gag_rotor_angle():controller.spin_angle(),f,golden(),arsenal.equipped_revolverator()});
+    gag?world.gag_rotor_angle():controller.spin_angle(),f,golden(),arsenal.equipped_revolverator(),controller.drill_glow()});
   if(const auto event=visuals.poll_equip())equip_audio.play(event->actor);
   else if(f.equipped)equip_audio.suppress_native_appearance(world.weapon());
   world.contact_sparks(controller.attack_phase(),controller.spin_angle());

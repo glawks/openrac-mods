@@ -153,6 +153,28 @@ struct Fixture {
 }
 int main(){
  {
+  Fixture f;auto frame=f.frame();f.world.set_active(true);f.world.observe_frame(frame);
+  f.put(hero+0x2084,0x20);
+  f.world.drill_overheat();
+  f.world.observe_frame(frame);
+  require(f.counterstrikes.empty(),"the strike must finish before the burn hits Ratchet");
+  f.put(hero+0x2084,0);
+  frame.paused=true;f.world.observe_frame(frame);
+  require(f.counterstrikes.empty(),"a pending burn waits through pause");
+  frame.paused=false;f.world.observe_frame(frame);
+  require(f.counterstrikes.size()==1,"overheat is posted as a single native hit");
+  const auto& hit=f.counterstrikes[0];
+  require(hit.victim==0&&hit.attacker==-1&&hit.mask==1&&hit.damage==1.f,
+          "overheat targets only Ratchet for one point of environmental damage");
+  f.world.observe_frame(frame);
+  require(f.counterstrikes.size()==1,"the heat event is consumed exactly once");
+  f.put(hero+0x2084,0x20);
+  f.world.drill_overheat();
+  for(int tick=0;tick<60;++tick)f.world.observe_frame(frame);
+  f.put(hero+0x2084,0);f.world.observe_frame(frame);
+  require(f.counterstrikes.size()==1,"interruptions cannot leave a burn waiting indefinitely");
+ }
+ {
   Fixture f;f.world.enable_crate_capture();
   const Vec3 origin{1,0,20};
   const auto crate=f.crate(0,501,origin),orb=f.enemy(1,806,origin);

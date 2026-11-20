@@ -21,9 +21,9 @@ struct Fixture {
     std::vector<unsigned char> ram=std::vector<unsigned char>(0x2000000);
     openrac_api api{};GuestArena level_arena,held_arena;
     const RegionBindings& region;int level=1;
-    openrac_prop_pose vent_pose{};
-    unsigned vent_creates{},vent_removes{};
-    bool vent_visible{};
+    std::array<openrac_prop_pose,5> glow_pose{};
+    unsigned glow_creates{},glow_removes{};
+    std::array<bool,5> glow_visible{};
     template<class T>T get(unsigned at)const{T result{};std::memcpy(&result,ram.data()+at,sizeof result);return result;}
     template<class T>void put(unsigned at,const T& value){std::memcpy(ram.data()+at,&value,sizeof value);}
     unsigned global(unsigned at)const{return region.data(at);}
@@ -57,17 +57,20 @@ struct Fixture {
     void track_vent(){
         api.api_minor=12;
         api.prop_create=+[](openrac_mod*,const char* path){
-            require(std::strcmp(path,"assets/vent-heat/slots.glb")==0,"heat uses a private vent-only mesh");
-            ++live->vent_creates;return 0;
+            constexpr const char* paths[]={"assets/tip-heat/band-1.glb","assets/tip-heat/band-2.glb",
+                "assets/tip-heat/band-3.glb","assets/tip-heat/band-4.glb","assets/vent-heat/slots.glb"};
+            ++live->glow_creates;
+            for(int i=0;i<5;++i)if(std::strcmp(path,paths[i])==0)return i;
+            require(false,"heat uses only the five dedicated glow meshes");return OPENRAC_HOOK_UNKNOWN;
         };
-        api.prop_pose=+[](openrac_mod*,int,const openrac_prop_pose* pose){
-            live->vent_pose=*pose;return OPENRAC_HOOK_OK;
+        api.prop_pose=+[](openrac_mod*,int id,const openrac_prop_pose* pose){
+            live->glow_pose.at(id)=*pose;return OPENRAC_HOOK_OK;
         };
-        api.prop_hide=+[](openrac_mod*,int,int hidden){
-            live->vent_visible=!hidden;return OPENRAC_HOOK_OK;
+        api.prop_hide=+[](openrac_mod*,int id,int hidden){
+            live->glow_visible.at(id)=!hidden;return OPENRAC_HOOK_OK;
         };
-        api.prop_remove=+[](openrac_mod*,int){
-            live->vent_visible=false;++live->vent_removes;return OPENRAC_HOOK_OK;
+        api.prop_remove=+[](openrac_mod*,int id){
+            live->glow_visible.at(id)=false;++live->glow_removes;return OPENRAC_HOOK_OK;
         };
         put(held+0xc0,Vec3{0,1,0});put(held+0xd0,Vec3{-1,0,0});put(held+0xe0,Vec3{0,0,1});
         put(held+0x10,Vec3{4,8,16});put<float>(held+0x2c,.1458333283662796f);
@@ -81,9 +84,11 @@ int main(){
         auto state=f.state(Phase::Idle,golden);
         const auto frame=[&]{visual.begin_native_frame();visual.update_held(state);};
         for(unsigned i=0;i<assembly_frames;++i)frame();
-        require(f.vent_creates==1&&f.vent_visible&&f.vent_pose.blend==OPENRAC_PROP_ADD,
+        const auto& vent=f.glow_pose[4];
+        const bool& vent_visible=f.glow_visible[4];
+        require(f.glow_creates==5&&vent_visible&&vent.blend==OPENRAC_PROP_ADD&&!f.glow_visible[0],
                 "loaded idle renders one additive prop on the held weapon");
-        const auto idle=f.vent_pose;
+        const auto idle=vent;
         require(idle.tint[3]>.1f&&idle.tint[3]<.3f&&idle.tint[0]>idle.tint[1]*10,
                 "idle is an understated red");
         require(idle.matrix[1]==1&&idle.matrix[4]==-1&&idle.matrix[10]==1&&
@@ -91,23 +96,33 @@ int main(){
                 "heat matches the complete held housing transform");
         state.phase=Phase::Spinning;
         for(unsigned i=0;i<90;++i){state.enemy_angle+=.7f;frame();}
-        require(f.vent_pose.tint[3]>.8f&&f.vent_visible,"the slots grow brighter with the smoke load");
+        require(vent.tint[3]>.8f&&vent_visible,"the slots grow brighter with the smoke load");
+        state.tip_heat={1.f,.4f,0,0};
+        frame();
+        require(f.glow_visible[0]&&f.glow_visible[1]&&!f.glow_visible[2]&&!f.glow_visible[3],
+                "tip and second band light independently on the loaded drill");
+        const auto hot=f.glow_pose[0];
+        state.enemy_angle+=.7f;frame();
+        require(f.glow_pose[0].matrix[1]!=hot.matrix[1]&&f.glow_pose[0].tint[3]==hot.tint[3],
+                "the hot overlay rotates with the shaft without changing its heat");
         state.ammunition=0;
-        frame();require(!f.vent_visible,"empty magazines extinguish heat even when the last enemy is still held");
+        frame();require(!vent_visible&&f.glow_visible[0],
+                "the empty valve stops glowing while recently heated metal is still cooling");
         state.phase=Phase::Idle;
+        state.tip_heat={};
         visual.held_rotor().dry_fire();
-        frame();require(!f.vent_visible,"pressing Circle on an empty magazine never lights the vents");
+        frame();require(!vent_visible&&!f.glow_visible[0],"dry fire never heats a cold drill");
         state.ammunition=20;
         for(unsigned i=0;i<24;++i)frame();
-        require(f.vent_creates==1&&f.vent_visible,"resuming heat reuses the same prop");
+        require(f.glow_creates==5&&vent_visible,"resuming heat reuses the same props");
         state.frame.paused=true;
-        frame();require(!f.vent_visible,"pause suppresses the in-world glow");
+        frame();require(!vent_visible,"pause suppresses the in-world glow");
         state.frame.paused=false;
-        frame();require(f.vent_visible,"resuming restores the held effect");
+        frame();require(vent_visible,"resuming restores the held effect");
         state.logical_equipped=false;
-        frame();require(!f.vent_visible,"ordinary weapons never show the glow");
+        frame();require(!vent_visible,"ordinary weapons never show the glow");
         visual.reset();
-        require(f.vent_removes==1,"level teardown frees the prop");
+        require(f.glow_removes==5,"level teardown frees every glow prop");
     }
     for(bool pal:{false,true})for(bool golden:{false,true})for(bool paused_first:{false,true}){
         Fixture f(pal);NativeWeaponVisual visual(&f.api,f.level_arena,f.held_arena);

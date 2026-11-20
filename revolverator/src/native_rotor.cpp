@@ -114,6 +114,25 @@ std::optional<std::array<float,16>> NativeRotor::housing_transform()const{
     return std::array<float,16>{x.x*scale,x.y*scale,x.z*scale,0,
         y.x*scale,y.y*scale,y.z*scale,0,z.x*scale,z.y*scale,z.z*scale,0,at.x,at.y,at.z,1};
 }
+float NativeRotor::head_angle()const{
+    return std::remainder(controller_.angle()+assembly_.head_turn,6.2831853071795864769f);
+}
+std::optional<std::array<float,16>> NativeRotor::head_transform()const{
+    const auto housing=housing_transform();
+    if(!housing)return {};
+    const auto& m=*housing;
+    const float angle=head_angle();
+    const float radial=controller_.radial_scale(),axial=controller_.axial_scale()*assembly_.head_axial_scale;
+    const auto to_world=[&](Vec3 p){return Vec3{
+        m[0]*p.x+m[4]*p.y+m[8]*p.z,m[1]*p.x+m[5]*p.y+m[9]*p.z,m[2]*p.x+m[6]*p.y+m[10]*p.z};};
+    const auto x=to_world(turn_minus_y({radial,0,0},angle));
+    const auto y=to_world({0,axial,0});
+    const auto z=to_world(turn_minus_y({0,0,radial},angle));
+    const auto socket=source_pivot*source_scale;
+    const auto from_socket=turn_minus_y({socket.x*radial,socket.y*axial,socket.z*radial},angle);
+    const auto at=Vec3{m[12],m[13],m[14]}+to_world(socket-from_socket);
+    return std::array<float,16>{x.x,x.y,x.z,0,y.x,y.y,y.z,0,z.x,z.y,z.z,0,at.x,at.y,at.z,1};
+}
 void NativeRotor::apply(){
     if(!attached())return;
     // Modes1 replace the native Walloper jab's five local records. Body geometry
@@ -128,7 +147,7 @@ void NativeRotor::apply(){
     // or interrupted intro; no rotor angle is reset or accumulated here.
     const float housing=assembly_.housing_scale;
     write(arena_+0x20,Vec3{housing,housing,housing});
-    const float angle=std::remainder(controller_.angle()+assembly_.head_turn,6.2831853071795864769f);
+    const float angle=head_angle();
     const float radial=controller_.radial_scale(),axial=controller_.axial_scale()*assembly_.head_axial_scale;
     const auto head=arena_+head_joint*64;
     // Native joint quaternions use conjugated axis images. Positive native Y

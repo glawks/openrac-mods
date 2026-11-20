@@ -58,6 +58,7 @@ float Controller::recovery_seconds()const{
  return std::isfinite(settings_.recovery)?std::clamp(settings_.recovery,0.f,.15f):.15f;
 }
 void Controller::cancel_attack(){
+ temperature_.abort_spin();
  const bool animated=phase_!=Phase::Idle||bool(target_);
  if(target_&&world_.valid(target_))world_.release(target_,true);
  else if(target_)world_.discarded(target_);
@@ -73,7 +74,7 @@ void Controller::cancel(){
   if(target&&world_.valid(target))world_.release(target,true);
   else if(target)world_.discarded(target);
  }
- held_=true;world_.cancelled();
+ temperature_.reset();held_=true;world_.cancelled();
 }
 void Controller::discard(Target target){
  if(!target)return;
@@ -117,7 +118,10 @@ void Controller::launch(const Frame& f){
  const float power=charge(),blast=blast_charge(),speed=13.f+power*9.f;
  *flight={target_,point_,{std::cos(f.yaw)*speed,std::sin(f.yaw)*speed,2.f+power*1.5f},0,power,blast,f.yaw,++sequence_};
  const auto victim=target_;target_={};phase_=Phase::Recovery;timer_=0;release_recovery_=true;
+ const bool overheated=capturable_class(int(victim.klass))&&temperature_.thrown();
+ const auto generation=reset_generation_;
  ++counters_.throws;world_.launched(victim,power,blast);world_.animate(Motion::Release);
+ if(overheated&&generation==reset_generation_)world_.drill_overheat();
 }
 void Controller::advance_throw(const Frame& f){
  if(!world_.throw_strike_active()||timer_>.5f){cancel_attack();return;}
@@ -141,6 +145,7 @@ void Controller::tick(const Frame& f){
  if(!f.playing){cancel();return;}
  if(!std::isfinite(f.seconds)||f.seconds<=0||f.seconds>.1f){cancel();return;}
  const float dt=f.seconds;
+ temperature_.advance(dt,holding_enemy(phase_)&&capturable_class(int(target_.klass)));
  timer_+=dt;
  if(phase_==Phase::Recovery&&timer_+.000001f>=recovery_seconds()){
   phase_=Phase::Idle;timer_=0;release_recovery_=false;
@@ -148,7 +153,10 @@ void Controller::tick(const Frame& f){
  const auto generation=reset_generation_;advance_flights(f);
  if(generation!=reset_generation_)return;
  if(!f.equipped)return;
- if(target_&&!world_.valid(target_)){const auto stale=target_;target_={};world_.discarded(stale);world_.attack_cancelled();recover();}
+ if(target_&&!world_.valid(target_)){
+  const auto stale=target_;target_={};temperature_.abort_spin();
+  world_.discarded(stale);world_.attack_cancelled();recover();
+ }
  const bool pressed=f.primary&&!held_;held_=f.primary;
  const bool input_ready=world_.attack_input_ready();
  if(!input_ready)buffered_=false;
@@ -181,13 +189,14 @@ void Controller::tick(const Frame& f){
   if(!f.primary&&charge()<1.f){
    const auto victim=target_;
    target_={};phase_=Phase::Recovery;timer_=spin_time_=angle_=0;
-   buffered_=release_recovery_=false;
+   buffered_=release_recovery_=false;temperature_.abort_spin();
    world_.drop(victim);
    if(generation!=reset_generation_)return;
    world_.attack_cancelled();world_.animate(Motion::Recover);
    break;
   }
   spin_time_+=dt;
+  if(capturable_class(int(target_.klass)))temperature_.spin(spin_time_,settings_.full_charge,settings_.maximum_spin);
   const float power=charge();angle_=std::remainder(angle_+dt*(24.f+power*18.f),6.283185307f);
   point_=world_.carry_anchor(angle_).value_or(f.position+Vec3{0,0,settings_.orbit_height});
   world_.move(target_,point_,angle_);

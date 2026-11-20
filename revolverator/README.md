@@ -60,6 +60,14 @@ spinning. Releasing at full charge starts the native Walloper strike immediately
 The enemy detaches from the drill tip at the end of Ratchet's forward drive.
 An uninterrupted hold starts the same strike automatically after three seconds.
 A new press is accepted after the native attack has recovered.
+
+The drill tip starts to glow near the end of the first automatic spin. Once
+heated, successive charged enemy throws spread the glow up the spiral. Four
+quick throws from the first hot release can cost Ratchet one point of health
+after the throw animation. Cooling reduces the retained heat, so a gap between
+throws can raise the number needed to overheat. A fully heated drill cools in
+about five seconds after a short carry-over window. Only enemy throws add heat.
+
 The Rotatore can also lift and throw one ordinary crate. The strike
 still hits the other crates in a stack, and explosive crates keep their native
 detonation behavior. A thrown crate breaks on impact or at the native fall
