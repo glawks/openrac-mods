@@ -907,6 +907,10 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
 
     // An unsupported third game is refused; restore the RAC1 mock for other tests.
     {
+        // Restore the RAM words which the simulated relocated RAC2 level
+        // occupied: the remaining tests operate on a RAC1 memory layout.
+        at<std::int32_t>(kRac2BootMode) = 0;
+        at<std::int32_t>(kRac2LevelMode) = 0;
         g_host->relocate_rac2_mode = false;
         openrac_api other = make_api();
         other.game = "rac3";
