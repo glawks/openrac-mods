@@ -861,6 +861,27 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         const Report click_confirm = read_pad();
         CHECK(click_confirm.held(kbm::kCross));
 
+        // A stationary mouse never fights W/arrow keyboard navigation;
+        // moving the pointer again re-enables native row hover.
+        tick();
+        point_at(2);
+        hold(26); // W -> up in menu
+        const Report keyboard_wins = read_pad();
+        CHECK(keyboard_wins.held(kbm::kUp));
+        CHECK(!keyboard_wins.held(kbm::kDown));
+        tick();
+        point_at(2);
+        const Report still_suspended = read_pad();
+        CHECK(!still_suspended.held(kbm::kDown));
+        tick();
+        point_at(2);
+        g_host->input.mouse_dy = 10.0f;
+        const Report hover_resumes = read_pad();
+        CHECK(hover_resumes.held(kbm::kDown));
+        tick();
+        point_at(2);
+        read_pad(); // release d-pad
+
         // Clicking the background does not confirm an unrelated option,
         // but keyboard Enter remains the normal Cross binding.
         tick();

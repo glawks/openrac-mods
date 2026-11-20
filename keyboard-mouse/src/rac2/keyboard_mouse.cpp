@@ -291,6 +291,19 @@ private:
         return false;
     }
 
+    bool keyboard_navigation_held(const openrac_input& in) const {
+        if (!in.focused || in.overlay) return false;
+        for (const auto action : {Action::MenuUp, Action::MenuDown,
+                                  Action::MenuLeft, Action::MenuRight,
+                                  Action::MoveForward, Action::MoveBack,
+                                  Action::MoveLeft, Action::MoveRight}) {
+            for (int bind : binds_.of(action))
+                if (bind != 0 && !kbm::is_mouse(bind) && openrac_bind_held(&in, bind))
+                    return true;
+        }
+        return false;
+    }
+
     bool keyboard_confirm_held(const openrac_input& in) const {
         for (const auto action : {Action::MenuConfirm, Action::Jump}) {
             for (int bind : binds_.of(action))
@@ -305,10 +318,24 @@ private:
         hover_pending_ = -1;
         hover_pending_ticks_ = 0;
         hover_logged_target_ = -2;
+        hover_suspended_ = false;
     }
 
     void apply_main_hover(const openrac_input& in, const MainMenuHit& hit,
                           kbm::Virtual& v) {
+        // Keyboard direction/Enter takes priority. A stationary pointer
+        // shouldn't drag the selection back when the key is released.
+        if (keyboard_navigation_held(in) || keyboard_confirm_held(in)) {
+            hover_pending_ = -1;
+            hover_release_ = false;
+            hover_suspended_ = true;
+            return;
+        }
+        const bool pointer_intent = in.mouse_dx != 0.0f || in.mouse_dy != 0.0f
+                                    || mouse_confirm_pressed(in);
+        if (hover_suspended_ && !pointer_intent) return;
+        hover_suspended_ = false;
+
         const bool click = mouse_confirm_pressed(in) && !block_confirm_;
         const bool mouse_down = mouse_confirm_held(in);
         const bool keyboard_confirm = keyboard_confirm_held(in);
@@ -720,6 +747,7 @@ private:
     bool capture_ = true;
     bool menu_mouse_ = true;
     bool hover_release_ = false;
+    bool hover_suspended_ = false;
     int hover_pending_ = -1;
     int hover_pending_ticks_ = 0;
     int hover_logged_target_ = -2;

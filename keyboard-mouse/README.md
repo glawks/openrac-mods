@@ -20,7 +20,8 @@ list is read from the game's real menu layout and selected-row value.
 Moving the mouse over a menu row sends a native d-pad step towards it;
 a click on an unselected row waits until the game's highlight reaches
 that row before sending Cross. Clicking outside its rows does not select
-the highlighted option. Keyboard navigation and Enter still work.
+the highlighted option. Keyboard navigation and Enter take priority when used; stationary mouse
+hover resumes only after the mouse moves or the player clicks again.
 
 This is an untested in-game prototype, and it **does not** implement
 mouse hit-testing in pause menus, other front-end pages, PAL or NTSC2.
