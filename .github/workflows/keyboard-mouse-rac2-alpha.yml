@@ -1,0 +1,54 @@
+# Temporary fork-only test: compile and package only the keyboard/mouse mod.
+# No releases are published and the upstream branch is never modified.
+name: keyboard-mouse RAC2 alpha
+on:
+  push:
+    branches: [rac2-keyboard-mouse]
+    paths:
+      - "keyboard-mouse/**"
+      - ".github/workflows/keyboard-mouse-rac2-alpha.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x86_64:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Ninja
+        run: python -m pip install ninja
+      - name: Set up MSVC
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" | Out-File -Append $env:GITHUB_ENV }
+          }
+      - name: Fetch pinned OpenRAC SDK
+        run: echo "SDK=$(python tools/dev_sdk.py)" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DOPENRAC_SDK=$SDK"
+      - name: Build keyboard/mouse and its tests
+        run: cmake --build build --target keyboard_mouse keyboard_mouse_logic_test keyboard_mouse_load_test --parallel
+      - name: Run keyboard/mouse tests
+        run: ctest --test-dir build -R keyboard_mouse --output-on-failure
+      - name: Package Windows test mod
+        run: |
+          python "$SDK/tools/package_mod.py" build/package/keyboard-mouse -o dist
+          ls -l dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keyboard-mouse-rac2-alpha-windows
+          path: dist/*.zip
+          if-no-files-found: error
