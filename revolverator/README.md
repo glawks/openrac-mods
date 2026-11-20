@@ -15,9 +15,8 @@ ammunition, XP and favourite when the slot is available.
 
 The [0.3.5 release page](https://github.com/noire342/openrac-mods/releases/tag/revolverator-v0.3.5)
 includes the installable Windows package, corresponding source and validation
-receipt. Version 0.3.6 adds the valve, Golden effects and throw changes described
-below. The Nanotech orb and its trail follow the same anchor when the crate is
-held or thrown.
+receipt. See the [0.4.0 release notes](docs/RELEASE_0.4.0.md) for the Umbris
+encounter and the new crate and Golden effects.
 
 Native metal sparks follow the drill's contact with a spinning enemy. Their
 rate follows the rotation speed. The Golden upgrade uses the green spark
@@ -61,7 +60,7 @@ spinning. Releasing at full charge starts the native Walloper strike immediately
 The enemy detaches from the drill tip at the end of Ratchet's forward drive.
 An uninterrupted hold starts the same strike automatically after three seconds.
 A new press is accepted after the native attack has recovered.
-Version 0.3.6 can also lift and throw one ordinary crate. The strike
+The Rotatore can also lift and throw one ordinary crate. The strike
 still hits the other crates in a stack, and explosive crates keep their native
 detonation behavior. A thrown crate breaks on impact or at the native fall
 height over a void. Scripted respawning and platform-mounted crates stay under
