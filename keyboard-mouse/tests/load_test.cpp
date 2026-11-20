@@ -678,6 +678,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
     // RAC2 loads without RAC1's camera hook or disc-specific function addresses.
     {
         openrac_api other = make_api();
+        std::fprintf(stderr, "DEBUG RAC2 begin\n");
         other.game = "rac2";
         other.version = "ntsc";
         g_host->relocate_rac2_mode = true;
@@ -691,6 +692,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         g_host->functions.clear();
         g_host->failed.clear();
         CHECK(load(&other, reinterpret_cast<openrac_mod*>(1)) == 0);
+        std::fprintf(stderr, "DEBUG RAC2 loaded\n");
         CHECK(g_host->failed.empty() && g_host->pad != nullptr);
         CHECK(g_host->camera_hook == nullptr && g_host->functions.empty());
         CHECK(g_host->taken == (OPENRAC_INPUT_KEYBOARD | OPENRAC_INPUT_MOUSE));
@@ -706,6 +708,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(g_host->capture == 1); // must capture mouse on relocated gameplay mode
         CHECK(at<std::int32_t>(kRac2BootMode) == 1684956530);
 
+        std::fprintf(stderr, "DEBUG RAC2 movement\n");
         // The title / Press Start screen needs Start rather than Cross.
         // This is the NTSC address of the front-end's current-screen pointer
         // and GUI instance (both are zero before the menu is entered).
@@ -760,6 +763,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(!start_fallback.held(kbm::kTriangle));
         CHECK(!start_fallback.held(kbm::kCross));
 
+        std::fprintf(stderr, "DEBUG RAC2 front end\n");
         // RAC2 wheel is gameplay mode 4, although play_status calls it MENU.
         // Holding right-click across the transition must keep Triangle down,
         // capture intact, and let the mouse steer the wheel instead of
@@ -837,6 +841,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         at<std::int32_t>(kRac2LevelMode) = 0;
         g_host->phase = OPENRAC_PLAY_PLAYING;
 
+        std::fprintf(stderr, "DEBUG RAC2 wheel\n");
         // RAC2's saved quick-select slots and owned bytes drive the number
         // keys. Never replace item state directly: use the game's Item_Equip.
         for (int i = 0; i < 8; ++i)
@@ -905,6 +910,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(!click.held(kbm::kStart));
     }
 
+    std::fprintf(stderr, "DEBUG RAC2 done\n");
     // An unsupported third game is refused; restore the RAC1 mock for other tests.
     {
         // Restore the RAM words which the simulated relocated RAC2 level
@@ -1533,6 +1539,7 @@ void test_q_swings_the_camera_behind_ratchet() {
 // the one before left.
 void run(const char* library) {
     test_the_library_loads_on_each_disc_and_refuses_another_game(library);
+    std::fprintf(stderr, "DEBUG RAC1 resumed\n");
     test_keys_and_the_mouse_press_the_pad_and_turn_the_camera();
     test_the_quick_select_ring_follows_the_mouse();
     test_number_keys_put_the_quick_selects_items_in_hand();
