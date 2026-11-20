@@ -15,17 +15,21 @@ This separate development branch starts from the in-game confirmed
 `1.2.7-rac2-alpha.8` build. It does **not** change gameplay camera,
 WASD, sniper aim, shooting, weapon-wheel hold, number keys or scrolling.
 
-On **RAC2 NTSC-U v1.01 only**, the front end's New Game / Load / Options
-list is read from the game's real menu layout and selected-row value.
+On **RAC2 NTSC-U v1.01 only**, alpha.4 fixes the title menu's
+small-list offsets: the first hover prototype mistakenly read the large
+Options list instead. It also adds pointer hover and click targeting for
+the seven-row in-level pause panel (Weapons through Special). Both
+use the real selected-row value and menu geometry.
 Moving the mouse over a menu row sends a native d-pad step towards it;
 a click on an unselected row waits until the game's highlight reaches
 that row before sending Cross. Clicking outside its rows does not select
 the highlighted option. Keyboard navigation and Enter take priority when used; stationary mouse
 hover resumes only after the mouse moves or the player clicks again.
 
-This is an untested in-game prototype, and it **does not** implement
-mouse hit-testing in pause menus, other front-end pages, PAL or NTSC2.
-Those continue to use the existing directional-mouse fallback. No
+This is still an untested in-game prototype. Other front-end pages,
+pause submenus, PAL and NTSC2 do not have verified hit targets yet.
+Moving the visible mouse on those screens no longer emits unrelated
+directional input; keyboard and controller navigation still work. No
 manual pointer writes or game menu patches are made.
 
 Use the `keyboard-mouse RAC2 hover prototype` GitHub Actions artifact

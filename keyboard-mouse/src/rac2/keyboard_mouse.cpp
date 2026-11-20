@@ -24,10 +24,10 @@ namespace {
 using kbm::Action;
 using kbm::Context;
 
-// This experimental hit test is deliberately limited to RAC2 NTSC's
-// front-end main list. It never changes gameplay state, weapon selection,
-// or the existing RAC1 mouse-menu implementation.
-struct MainMenuHit {
+// NTSC native UI lists. Each hit carries the REAL selected row from the
+// game's widget plus the row under the system cursor in picture coordinates.
+// Neither gameplay nor RAC1's menu input paths are changed.
+struct MenuHit {
     int selected = -1;
     int target = -1; // -1 = pointer outside all rows
 };
@@ -213,12 +213,13 @@ private:
         };
     }
 
-    // RAC2 NTSC main-menu list, grounded in OpenRAC's mod_pages.c and
-    // rac2-decomp's option_list_draw_rows/list_menu_update. The list is
-    // GUI+0x3E430; the child row renderer is list+0x188. Its on-screen
-    // position pointer (+0x4C), row baseline (+0xA8), step (+0xAC), and
-    // count (+0xB0) are read from the actual running menu.
-    std::optional<MainMenuHit> main_menu_hit(const openrac_input& in) const {
+    // Main title uses SMALL list at GUI+0x3E430 (not the large Options
+    // list!). The row renderer and selector are at list+0x10:
+    // option_list_draw_rows() reads the position at child+0x4C, baseline
+    // +0xA8, step +0xAC and count +0xB0. Selection is child+0x50.
+    // In the previous prototype child=list+0x188 and list+0x16C
+    // belonged to a *different* widget, silently disabling hit-testing.
+    std::optional<MenuHit> main_menu_hit(const openrac_input& in) const {
         if (!menu_mouse_ || mod_.version() != "ntsc") return std::nullopt;
         const auto [shown, gui] = frontend_state();
         if (!plausible_guest(shown) || !plausible_guest(gui)) return std::nullopt;
@@ -232,11 +233,11 @@ private:
             return std::nullopt;
 
         const auto list = gui + 0x3E430u;
-        if (!plausible_guest(list) || !plausible_guest(list + 0x238u))
+        if (!plausible_guest(list) || !plausible_guest(list + 0xC0u))
             return std::nullopt;
-        const auto child = list + 0x188u;
+        const auto child = list + 0x10u;
         const int count = mod_.memory().read<std::int32_t>(child + 0xB0u);
-        const int selected = mod_.memory().read<std::int32_t>(list + 0x16Cu);
+        const int selected = mod_.memory().read<std::int32_t>(child + 0x50u);
         const int row_base = mod_.memory().read<std::int32_t>(child + 0xA8u);
         const int row_step = mod_.memory().read<std::int32_t>(child + 0xACu);
         const auto position = mod_.memory().read<std::uint32_t>(child + 0x4Cu);
@@ -251,7 +252,7 @@ private:
             || y < -300.0f || y > 500.0f)
             return std::nullopt;
 
-        MainMenuHit result{selected, -1};
+        MenuHit result{selected, -1};
         if (!in.focused || in.overlay || !in.pointer_inside
             || !std::isfinite(in.pointer_x) || !std::isfinite(in.pointer_y)
             || in.pointer_x < 0.0f || in.pointer_x > 1.0f
@@ -267,6 +268,73 @@ private:
         if (std::fabs(px - x) > 100.0f) return result;
         for (int i = 0; i < count; ++i) {
             const float middle = y + static_cast<float>(row_base + row_step * i) + 8.0f;
+            if (std::fabs(py - middle) <= half_height) {
+                result.target = i;
+                break;
+            }
+        }
+        return result;
+    }
+
+    // The pause menu is a different UI system from the title's small list.
+    // RAC2's UpdateMenuListActions / RenderLocalizedUiEntryList use:
+    //   pause state +0x14 = current page
+    //   page +0xE8 = focused text-list widget
+    //   widget +0x20/+0x24 = width/height, +0x30 = flags,
+    //           +0x34 = entries, +0x40 = selected row.
+    // Text entries are 12 bytes; the first int16 is the terminating text ID.
+    // Limit this initial hit-test to the main, seven-row pause panel shown
+    // in-game. Other widget kinds and submenus remain keyboard-only until
+    // their layouts are verified.
+    std::optional<MenuHit> pause_menu_hit(const openrac_input& in) const {
+        if (!menu_mouse_ || mod_.version() != "ntsc")
+            return std::nullopt;
+        const openrac::gaddr state = mod_.relocate(0x001F2840u);
+        if (!plausible_guest(state)) return std::nullopt;
+        const auto page = mod_.memory().read<std::uint32_t>(state + 0x14u);
+        const auto next = mod_.memory().read<std::uint32_t>(state + 0x18u);
+        if (!plausible_guest(page) || (next != 0 && next != page))
+            return std::nullopt;  // avoid clicking while pages transition
+        const auto focus = mod_.memory().read<std::uint32_t>(page + 0xE8u);
+        if (!plausible_guest(focus)) return std::nullopt;
+        const int width = mod_.memory().read<std::int32_t>(focus + 0x20u);
+        const int height = mod_.memory().read<std::int32_t>(focus + 0x24u);
+        const auto flags = mod_.memory().read<std::uint32_t>(focus + 0x30u);
+        const auto entries = mod_.memory().read<std::uint32_t>(focus + 0x34u);
+        const int selected = mod_.memory().read<std::int32_t>(focus + 0x40u);
+        if (!plausible_guest(entries) || width < 360 || width > 680
+            || height < 350 || height > 500 || (flags & 0x10u))
+            return std::nullopt;
+
+        int count = 0;
+        // A fixed upper bound also protects against a bogus pointer/table.
+        while (count < 8) {
+            const auto text_id = mod_.memory().read<std::int16_t>(
+                entries + static_cast<openrac::gaddr>(12 * count));
+            if (text_id == 0) break;
+            ++count;
+        }
+        if (count != 7 || selected < 0 || selected >= count)
+            return std::nullopt;
+        MenuHit result{selected, -1};
+        if (!in.focused || in.overlay || !in.pointer_inside
+            || !std::isfinite(in.pointer_x) || !std::isfinite(in.pointer_y)
+            || in.pointer_x < 0.0f || in.pointer_x > 1.0f
+            || in.pointer_y < 0.0f || in.pointer_y > 1.0f)
+            return result;
+
+        const float px = in.pointer_x * kbm::kScreenWidth;
+        const float py = in.pointer_y * kbm::kScreenHeight;
+        // The game's rendering divides the list height by count+1, with
+        // labels centred at successive row heights. This produces the
+        // seven on-screen buttons (Weapons through Special), each aligned
+        // to the actual system cursor rather than a mouse-motion gesture.
+        const float row_height = static_cast<float>(height) / (count + 1);
+        const float half_height = std::min(24.0f, row_height * 0.43f);
+        if (std::fabs(px - 0.5f * width) > std::min(150.0f, width * 0.30f))
+            return result;
+        for (int i = 0; i < count; ++i) {
+            const float middle = (i + 1) * row_height - 1.0f;
             if (std::fabs(py - middle) <= half_height) {
                 result.target = i;
                 break;
@@ -321,8 +389,8 @@ private:
         hover_suspended_ = false;
     }
 
-    void apply_main_hover(const openrac_input& in, const MainMenuHit& hit,
-                          kbm::Virtual& v) {
+    void apply_menu_hover(const openrac_input& in, const MenuHit& hit,
+                          bool pause, kbm::Virtual& v) {
         // Keyboard direction/Enter takes priority. A stationary pointer
         // shouldn't drag the selection back when the key is released.
         if (keyboard_navigation_held(in) || keyboard_confirm_held(in)) {
@@ -350,8 +418,11 @@ private:
         if (hit.target != hover_logged_target_) {
             hover_logged_target_ = hit.target;
             if (hit.target >= 0)
-                mod_.info("RAC2 main hover: row=" + std::to_string(hit.target)
-                          + ", selected=" + std::to_string(hit.selected));
+                mod_.info(std::string(pause ? "RAC2 pause hover" : "RAC2 title hover")
+                          + ": row=" + std::to_string(hit.target)
+                          + ", selected=" + std::to_string(hit.selected)
+                          + ", pointer=" + std::to_string(in.pointer_x)
+                          + "," + std::to_string(in.pointer_y));
         }
         if (hit.target < 0) {
             hover_release_ = false;
@@ -699,27 +770,25 @@ private:
                 if (!direction) repeats_[i].step(false);
             }
 
-            // First, target RAC2 NTSC's actual title-list rows by pointer
-            // position. Other discs and submenus retain the tested joystick
-            // navigation fallback until their layouts are verified.
+            // Use position-aware hover on the two verified NTSC layouts.
+            // The visible OS cursor must never fight gesture-based d-pad
+            // input, so unsupported pages do NOT scroll by mouse motion.
+            // Keyboard/gamepad navigation still works on every menu.
+            const bool pause_page =
+                phase == OPENRAC_PLAY_MENU && status.level >= 0 && mode == 3;
             const auto hovered =
                 phase == OPENRAC_PLAY_FRONT_END && interactive_frontend
-                    ? main_menu_hit(in) : std::nullopt;
+                    ? main_menu_hit(in)
+                    : pause_page ? pause_menu_hit(in) : std::nullopt;
+            menu_motion_.reset();
             if (hovered.has_value()) {
-                menu_motion_.reset();
-                apply_main_hover(in, *hovered, v);
+                apply_menu_hover(in, *hovered, pause_page, v);
             } else {
                 reset_main_hover();
-                const bool interactive_menu =
-                    phase != OPENRAC_PLAY_FRONT_END || interactive_frontend;
-                if (interactive_menu && menu_mouse_ && in.pointer_inside
-                    && in.focused && !in.overlay) {
-                    const float dx = phase == OPENRAC_PLAY_FRONT_END ? 0.0f : in.mouse_dx;
-                    v.held = static_cast<std::uint16_t>(
-                        v.held | menu_motion_.step(dx, in.mouse_dy, menu_step_pixels_));
-                } else {
-                    menu_motion_.reset();
-                }
+                // A mouse click on an unsupported menu must not accidentally
+                // activate whichever row the controller last highlighted.
+                if (mouse_confirm_held(in) && !keyboard_confirm_held(in))
+                    v.held = static_cast<std::uint16_t>(v.held & ~kbm::kCross);
             }
         } else if (scene) {
             v.held = kbm::buttons_for(Context::Cutscene, held, -1);
@@ -778,7 +847,7 @@ void load(openrac::Mod& mod) {
     mod.on_pad([keyboard](int port, std::uint8_t* report, int size) {
         keyboard->on_pad(port, report, size);
     });
-    mod.info("RAC2 experimental keyboard/mouse (NTSC main-menu hover and click prototype)");
+    mod.info("RAC2 hover: corrected title small-list offsets and seven-row pause hit-testing");
 }
 
 }  // namespace kbm_rac2

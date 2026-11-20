@@ -341,9 +341,13 @@ void* host_function_at(openrac_gaddr address) {
 // as confirmed by the user's live log.
 constexpr openrac_gaddr kRac2BootMode = 0x001A8BB0u;
 constexpr openrac_gaddr kRac2LevelMode = 0x001C8BB0u;
+constexpr openrac_gaddr kRac2BootMenu = 0x001F2840u;
+constexpr openrac_gaddr kRac2LevelMenu = 0x002F2840u;
 openrac_gaddr host_relocate(openrac_gaddr a) {
-    if (g_host->relocate_rac2_mode && a == kRac2BootMode)
-        return kRac2LevelMode;
+    if (g_host->relocate_rac2_mode) {
+        if (a == kRac2BootMode) return kRac2LevelMode;
+        if (a == kRac2BootMenu) return kRac2LevelMenu;
+    }
     return a;
 }
 
@@ -777,16 +781,16 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(!start_fallback.held(kbm::kTriangle));
         CHECK(!start_fallback.held(kbm::kCross));
 
-        // Test only the RAC2 NTSC main list's actual pointer/row metadata:
-        // GUI + 0x3E430, child + 0x188. The list's owner page must be the
-        // visible main page, not the Options page or a pause dialog.
+        // RAC2's title uses the SMALL list at GUI+0x3E430, child+0x10.
+        // The earlier prototype mistakenly read the unrelated big list at
+        // +0x188, allowing pointer movement to fall back to d-pad gestures.
         constexpr std::uint32_t kMainItems = 0x00261540u;
         constexpr std::uint32_t kOptionsPage = 0x00140000u;
         constexpr std::uint32_t kMainPage = 0x00150000u;
         constexpr std::uint32_t kMenuGui = 0x00100000u;
         constexpr std::uint32_t kRowPos = 0x00160000u;
         constexpr std::uint32_t kMainList = kMenuGui + 0x3E430u;
-        constexpr std::uint32_t kChild = kMainList + 0x188u;
+        constexpr std::uint32_t kChild = kMainList + 0x10u;
         at<std::uint32_t>(kMainItems + 2u * 20u + 12u) = kOptionsPage;
         at<std::uint32_t>(kOptionsPage + 0xE0u) = kMainPage;
         at<std::uint32_t>(kMenuCurrent) = kMainPage;
@@ -797,7 +801,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         at<std::int32_t>(kChild + 0xA8u) = 12;
         at<std::int32_t>(kChild + 0xACu) = 60;
         at<std::int32_t>(kChild + 0xB0u) = 3;
-        at<std::int32_t>(kMainList + 0x16Cu) = 0;
+        at<std::int32_t>(kChild + 0x50u) = 0;
         const auto point_at = [](int row) {
             g_host->input.pointer_inside = 1;
             g_host->input.pointer_x = 0.5f;
@@ -816,12 +820,12 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         const Report hover_release = read_pad();
         CHECK(!hover_release.held(kbm::kDown));
         tick();
-        at<std::int32_t>(kMainList + 0x16Cu) = 1;
+        at<std::int32_t>(kChild + 0x50u) = 1;
         point_at(2);
         const Report hover_again = read_pad();
         CHECK(hover_again.held(kbm::kDown));
         tick();
-        at<std::int32_t>(kMainList + 0x16Cu) = 2;
+        at<std::int32_t>(kChild + 0x50u) = 2;
         point_at(2);
         g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
         const Report hover_settled = read_pad();
@@ -843,7 +847,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
 
         tick();
         point_at(0);
-        at<std::int32_t>(kMainList + 0x16Cu) = 1;
+        at<std::int32_t>(kChild + 0x50u) = 1;
         const Report click_release = read_pad();
         CHECK(!click_release.held(kbm::kCross));
         tick();
@@ -853,7 +857,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(!click_continue.held(kbm::kCross));
         tick();
         point_at(0);
-        at<std::int32_t>(kMainList + 0x16Cu) = 0;
+        at<std::int32_t>(kChild + 0x50u) = 0;
         const Report click_wait_for_release = read_pad();
         CHECK(!click_wait_for_release.held(kbm::kCross));
         tick();
@@ -899,13 +903,18 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         const Report enter_still_works = read_pad();
         CHECK(enter_still_works.held(kbm::kCross));
 
-        // The hover path is disabled on a different page. Keep the
-        // original joystick-like fallback available there.
+        // The hover path is disabled on a different page, and that page
+        // does not receive invisible mouse-gesture navigation.
         tick();
         at<std::uint32_t>(kMenuCurrent) = kOptionsPage;
         point_at(2);
         const Report submenu = read_pad();
         CHECK(!submenu.held(kbm::kDown));
+        tick();
+        point_at(2);
+        g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
+        const Report submenu_click = read_pad();
+        CHECK(!submenu_click.held(kbm::kCross));
 
         at<std::uint32_t>(kMainItems + 2u * 20u + 12u) = 0;
         // Restore the earlier simulated active main menu for the existing
@@ -1047,49 +1056,91 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(g_host->equipped_id == 10);
         at<std::int32_t>(kRac2LevelMode) = 0;
 
-        // Menu cursor motion sends a d-pad tap, and clicking confirms
-        // the highlighted entry (not yet pixel-precise hover targeting).
+        // In-level pause's list is NOT the title GUI list. Relocate the
+        // game state and the pause menu root independently, as the port does.
+        // This seven-row mock matches the player's Weapons/Gadgets/.../Special
+        // screenshot: 416 high / (7+1) = 52 units per row.
+        constexpr std::uint32_t kPausePage = 0x00190000u;
+        constexpr std::uint32_t kPauseFocus = 0x001A0000u;
+        constexpr std::uint32_t kPauseEntries = 0x00270000u;
+        at<std::uint32_t>(kRac2LevelMenu + 0x14u) = kPausePage;
+        at<std::uint32_t>(kRac2LevelMenu + 0x18u) = kPausePage;
+        at<std::uint32_t>(kPausePage + 0xE8u) = kPauseFocus;
+        at<std::int32_t>(kPauseFocus + 0x20u) = 512;
+        at<std::int32_t>(kPauseFocus + 0x24u) = 416;
+        at<std::uint32_t>(kPauseFocus + 0x30u) = 0;
+        at<std::uint32_t>(kPauseFocus + 0x34u) = kPauseEntries;
+        at<std::int32_t>(kPauseFocus + 0x40u) = 0;
+        for (int i = 0; i < 7; ++i)
+            at<std::int16_t>(kPauseEntries + 12u * i) =
+                static_cast<std::int16_t>(100 + i);
+        at<std::int16_t>(kPauseEntries + 12u * 7) = 0;
+        g_host->phase = OPENRAC_PLAY_MENU;
+        at<std::int32_t>(kRac2LevelMode) = 3;
+        tick();
+        g_host->input.captured = 0;
+        g_host->input.pointer_inside = 1;
+        g_host->input.pointer_x = 0.5f;
+        g_host->input.pointer_y = 207.0f / 416.0f; // row 3: Items
+        const Report pause_first = read_pad();
+        CHECK(pause_first.held(kbm::kDown));
+        CHECK(!pause_first.held(kbm::kCross));
+        tick();
+        g_host->input.captured = 0;
+        g_host->input.pointer_inside = 1;
+        g_host->input.pointer_x = 0.5f;
+        g_host->input.pointer_y = 207.0f / 416.0f;
+        CHECK(!read_pad().held(kbm::kDown)); // release between steps
+
+        // Click another row: no premature Cross on the old highlighted row.
+        tick();
+        g_host->input.captured = 0;
+        g_host->input.pointer_inside = 1;
+        g_host->input.pointer_x = 0.5f;
+        g_host->input.pointer_y = 311.0f / 416.0f; // Options at row 5
+        g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
+        const Report pause_click = read_pad();
+        CHECK(pause_click.held(kbm::kDown));
+        CHECK(!pause_click.held(kbm::kCross));
+        // On a transition to a different page, never apply the old hit test.
+        tick();
+        at<std::uint32_t>(kRac2LevelMenu + 0x18u) = kPausePage + 0x200u;
+        g_host->input.captured = 0;
+        g_host->input.pointer_inside = 1;
+        g_host->input.pointer_x = 0.5f;
+        g_host->input.pointer_y = 311.0f / 416.0f;
+        g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
+        const Report pause_transition = read_pad();
+        CHECK(!pause_transition.held(kbm::kCross));
+        CHECK(!pause_transition.held(kbm::kDown));
+
+        // Unsupported screens do not let pointer movements move controller
+        // selection or mouse clicks confirm a different item.
+        at<std::uint32_t>(kRac2LevelMenu + 0x14u) = 0;
+        at<std::uint32_t>(kRac2LevelMenu + 0x18u) = 0;
+        g_host->phase = OPENRAC_PLAY_FRONT_END;
+        at<std::int32_t>(kRac2LevelMode) = 0;
+        // Other screens retain keyboard navigation, but moving a now-
+        // visible mouse pointer must NOT generate unrelated d-pad presses.
         g_host->phase = OPENRAC_PLAY_FRONT_END;
         tick();
         g_host->input.pointer_inside = 1;
-        g_host->input.mouse_dx = 8.0f; // lateral jitter must not stop vertical movement
+        g_host->input.mouse_dx = 8.0f;
         g_host->input.mouse_dy = 110.0f;
         const Report mouse_nav = read_pad();
-        CHECK(mouse_nav.held(kbm::kDown));
+        CHECK(!mouse_nav.held(kbm::kDown));
         CHECK(!mouse_nav.held(kbm::kLeft) && !mouse_nav.held(kbm::kRight));
-
-        tick();
-        g_host->input.pointer_inside = 1;
-        g_host->input.mouse_dx = 14.0f;
-        g_host->input.mouse_dy = 3.0f;
-        const Report jitter = read_pad();
-        CHECK(!jitter.held(kbm::kLeft) && !jitter.held(kbm::kRight));
-        CHECK(!jitter.held(kbm::kDown));
-
-        // Even a giant swipe cannot scroll more than one row immediately.
-        tick();
-        g_host->input.pointer_inside = 1;
-        g_host->input.mouse_dy = 900.0f;
-        const Report during_cooldown = read_pad();
-        CHECK(!during_cooldown.held(kbm::kDown));
-        for (int i = 0; i < 12; ++i) {
-            tick();
-            g_host->input.pointer_inside = 1;
-            read_pad();
-        }
-        tick();
-        g_host->input.pointer_inside = 1;
-        g_host->input.mouse_dx = 6.0f;
-        g_host->input.mouse_dy = 110.0f;
-        const Report second_step = read_pad();
-        CHECK(second_step.held(kbm::kDown));
 
         tick();
         g_host->input.pointer_inside = 1;
         g_host->input.mouse_held = g_host->input.mouse_pressed = OPENRAC_MOUSE_LEFT;
         const Report click = read_pad();
-        CHECK(click.held(kbm::kCross));
+        CHECK(!click.held(kbm::kCross));
         CHECK(!click.held(kbm::kStart));
+        tick();
+        press(40);
+        const Report keyboard_enter = read_pad();
+        CHECK(keyboard_enter.held(kbm::kCross));
     }
 
     std::fprintf(stderr, "DEBUG RAC2 done\n");
@@ -1099,6 +1150,8 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         // occupied: the remaining tests operate on a RAC1 memory layout.
         at<std::int32_t>(kRac2BootMode) = 0;
         at<std::int32_t>(kRac2LevelMode) = 0;
+        at<std::uint32_t>(kRac2LevelMenu + 0x14u) = 0;
+        at<std::uint32_t>(kRac2LevelMenu + 0x18u) = 0;
         g_host->relocate_rac2_mode = false;
         openrac_api other = make_api();
         other.game = "rac3";
