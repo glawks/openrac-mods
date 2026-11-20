@@ -674,8 +674,8 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
 
         g_host->phase = OPENRAC_PLAY_PLAYING;
         tick();
-        hold(OPENRAC_KEY_W);
-        press(OPENRAC_KEY_SPACE);
+        hold(26);  // USB HID KeyW
+        press(44); // USB HID Space
         const Report r = read_pad();
         CHECK(r.held(kbm::kCross));
         CHECK(r.bytes[5] < 0x80);
