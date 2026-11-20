@@ -79,6 +79,7 @@ struct Host {
     int phase = OPENRAC_PLAY_PLAYING;
     int equipped_id = -1;
     int equip_calls = 0;
+    int hook_entry_calls = 0;
     bool relocate_rac2_mode = false;
 
     // The input of the tick the port would hand the mod.
@@ -267,10 +268,23 @@ int game_item_equip(std::int32_t item) {
     return 1;
 }
 
+// RAC2 weapon equip must be resolved by its stable hook-point identifier,
+// rather than trying a native function lookup for "Item_Equip".
+void* host_hook_entry(const char* name, const char* signature) {
+    ++g_host->hook_entry_calls;
+    if (name != nullptr && signature != nullptr
+        && std::strcmp(name, "rac2.item.equip") == 0
+        && std::strcmp(signature, "i32(i32)") == 0)
+        return reinterpret_cast<void*>(&game_item_equip);
+    return nullptr;
+}
+
 void* host_function(const char* name) {
     g_host->functions.emplace_back(name);
+    // The production port does NOT resolve this as a native function by
+    // the friendly hook-point name; expose it through hook_entry below.
     if (std::strcmp(name, "Item_Equip") == 0)
-        return reinterpret_cast<void*>(&game_item_equip);
+        return nullptr;
     const kbm::Disc& d = disc();
 
     // The camera reset's cosine.
@@ -404,6 +418,7 @@ openrac_api make_api() {
     api.on_frame = host_on_frame;
     api.on_pad = host_on_pad;
     api.function = host_function;
+    api.hook_entry = host_hook_entry;
     api.function_at = host_function_at;
     api.relocate_data = host_relocate;
     api.relocate_level_data = host_relocate_level;
@@ -859,6 +874,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         press(31);  // USB HID Digit2
         read_pad();
         CHECK(g_host->equipped_id == 10);
+        CHECK(g_host->hook_entry_calls > 0); // native function lookup intentionally unavailable
 
         tick();
         g_host->input.wheel_y = -1.0f;  // next quick-select slot

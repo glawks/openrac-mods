@@ -211,8 +211,8 @@ private:
     }
 
     // These globals are the same ones RAC2 saves as its eight Quick Select
-    // assignments. Item_Equip is a game function supplied by the SDK, not a
-    // hard-coded call into guest memory.
+    // assignments. The actual equip request is a hook point, not a native
+    // function reliably discoverable by its human-readable name.
     std::array<std::int32_t, kbm::kQuickSelectSlots> quick_slots() const {
         const openrac::gaddr base =
             mod_.version() == "pal" ? 0x001A7438u : 0x001A73B8u;
@@ -243,15 +243,23 @@ private:
     void equip_item(int item, std::uint32_t tick) {
         if (!item_owned(item)) return;
         using Equip = openrac::rac2::Item_Equip;
-        const auto equip = mod_.function<Equip::fn>(Equip::name);
+        // Item_Equip is an exported RAC2 hook point. The port's
+        // function("Item_Equip") resolves native function names and can
+        // return null even when the hooked gameplay function exists.
+        // Since API 1.21, hook_entry resolves the stable hook ID and calls
+        // the same hook chain the game itself uses.
+        const auto equip = mod_.hook_entry<Equip>();
         if (equip == nullptr) {
             if (!warned_equip_) {
-                mod_.warn("RAC2 Item_Equip is unavailable; weapon hotkeys are disabled");
+                mod_.warn("RAC2 rac2.item.equip hook entry unavailable on this OpenRAC build/level; weapon shortcuts require interface 1.21");
                 warned_equip_ = true;
             }
             return;
         }
-        if (equip(item) != 0) {
+        const int result = equip(item);
+        mod_.info("RAC2 equip request: item=" + std::to_string(item)
+            + ", result=" + std::to_string(result));
+        if (result != 0) {
             requested_item_ = item;
             requested_tick_ = tick;
         }
