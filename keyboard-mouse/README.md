@@ -37,6 +37,13 @@ that can swallow a hold when RAC2 changes menu phases. It also handles multiple
 pad reads during one host tick. Capture-loss recovery and camera/movement
 suppression while the wheel is visible remain enabled.
 
+**Fix for alpha.5:** RAC2's gameplay state is a level-relocated global.
+Reading its boot-executable address left keyboard and mouse inactive in play
+even though the main menu still responded. The live game state is now resolved
+through OpenRAC's relocation API each time. An integration regression test
+places unrelated data at the boot address and verifies WASD, jump and mouse
+capture in the loaded level.
+
 In case the wheel still closes unexpectedly, the game log now records
 `RAC2 Quick Select held: mode=..., phase=..., captured=...` when the game's
 mode changes while RMB is held. Send this part of the log after reproducing

@@ -196,11 +196,15 @@ private:
         };
     }
 
-    // RAC2 shows its weapon wheel in game mode 4. The generic play-status
-    // API reports this mode as MENU, even though the wheel still needs
-    // Triangle held, a captured mouse, and the left-stick selection.
+    // The boot executable's g_nGameState is *not* its address after a
+    // level's program loads. OpenRAC's C host always uses
+    // OPENRAC_DATA(RAC2_g_nGameState) to access the live state.
+    // Resolve that relocation for every read rather than caching the
+    // boot address (which can contain unrelated data in a level).
     openrac::gaddr game_mode_address() const {
-        return mod_.version() == "pal" ? 0x001A8C60u : 0x001A8BB0u;
+        const openrac::gaddr boot =
+            mod_.version() == "pal" ? 0x001A8C60u : 0x001A8BB0u;
+        return mod_.relocate(boot);
     }
 
     // These globals are the same ones RAC2 saves as its eight Quick Select

@@ -79,6 +79,7 @@ struct Host {
     int phase = OPENRAC_PLAY_PLAYING;
     int equipped_id = -1;
     int equip_calls = 0;
+    bool relocate_rac2_mode = false;
 
     // The input of the tick the port would hand the mod.
     openrac_input input{};
@@ -322,8 +323,14 @@ void* host_function_at(openrac_gaddr address) {
     }
 }
 
-// Returns the executable's address as it is.
+// Mimic the port's level data relocation for RAC2's g_nGameState.
+// The unrelocated executable word may contain completely unrelated data,
+// as confirmed by the user's live log.
+constexpr openrac_gaddr kRac2BootMode = 0x001A8BB0u;
+constexpr openrac_gaddr kRac2LevelMode = 0x001C8BB0u;
 openrac_gaddr host_relocate(openrac_gaddr a) {
+    if (g_host->relocate_rac2_mode && a == kRac2BootMode)
+        return kRac2LevelMode;
     return a;
 }
 
@@ -673,6 +680,12 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         openrac_api other = make_api();
         other.game = "rac2";
         other.version = "ntsc";
+        g_host->relocate_rac2_mode = true;
+        // The 0x001A8BB0 boot location is garbage after a level loads.
+        // If the mod reads this rather than the relocated word, input will
+        // be disabled despite play_status reporting PLAYING.
+        at<std::int32_t>(kRac2BootMode) = 1684956530;
+        at<std::int32_t>(kRac2LevelMode) = 0;
         g_host->camera_hook = nullptr;
         g_host->taken = 0;
         g_host->functions.clear();
@@ -683,12 +696,15 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(g_host->taken == (OPENRAC_INPUT_KEYBOARD | OPENRAC_INPUT_MOUSE));
 
         g_host->phase = OPENRAC_PLAY_PLAYING;
+        at<std::int32_t>(kRac2LevelMode) = 0;
         tick();
         hold(26);  // USB HID KeyW
         press(44); // USB HID Space
         const Report r = read_pad();
         CHECK(r.held(kbm::kCross));
         CHECK(r.bytes[5] < 0x80);
+        CHECK(g_host->capture == 1); // must capture mouse on relocated gameplay mode
+        CHECK(at<std::int32_t>(kRac2BootMode) == 1684956530);
 
         // The title / Press Start screen needs Start rather than Cross.
         // This is the NTSC address of the front-end's current-screen pointer
@@ -749,12 +765,12 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         // capture intact, and let the mouse steer the wheel instead of
         // immediately closing it.
         g_host->phase = OPENRAC_PLAY_PLAYING;
-        at<std::int32_t>(0x001A8BB0u) = 0;
+        at<std::int32_t>(kRac2LevelMode) = 0;
         tick();
         g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
         read_pad();
         g_host->phase = OPENRAC_PLAY_MENU;
-        at<std::int32_t>(0x001A8BB0u) = 4;
+        at<std::int32_t>(kRac2LevelMode) = 4;
         tick();
         g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
         g_host->input.mouse_dx = 80.0f;
@@ -787,12 +803,12 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         // real menu mode, then the game enters the wheel before its next pad
         // read. A stale cached menu virtual pad must not release Triangle.
         g_host->phase = OPENRAC_PLAY_MENU;
-        at<std::int32_t>(0x001A8BB0u) = 3;
+        at<std::int32_t>(kRac2LevelMode) = 3;
         tick();
         g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
         g_host->input.pointer_inside = 0; // captured cursor, not a menu pointer
         read_pad();
-        at<std::int32_t>(0x001A8BB0u) = 4; // same input tick
+        at<std::int32_t>(kRac2LevelMode) = 4; // same input tick
         const Report same_tick_wheel = read_pad();
         CHECK(same_tick_wheel.held(kbm::kTriangle));
 
@@ -806,19 +822,19 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         // Mode 0 after an intervening menu while still physically held
         // should also send Triangle (only genuine RMB release stops it).
         g_host->phase = OPENRAC_PLAY_PLAYING;
-        at<std::int32_t>(0x001A8BB0u) = 0;
+        at<std::int32_t>(kRac2LevelMode) = 0;
         tick();
         g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
         const Report back_to_play = read_pad();
         CHECK(back_to_play.held(kbm::kTriangle));
 
         // A real RAC2 pause menu uses mode 3, not the wheel controls.
-        at<std::int32_t>(0x001A8BB0u) = 3;
+        at<std::int32_t>(kRac2LevelMode) = 3;
         tick();
         g_host->input.mouse_held = OPENRAC_MOUSE_RIGHT;
         const Report pause_menu = read_pad();
         CHECK(!pause_menu.held(kbm::kTriangle));
-        at<std::int32_t>(0x001A8BB0u) = 0;
+        at<std::int32_t>(kRac2LevelMode) = 0;
         g_host->phase = OPENRAC_PLAY_PLAYING;
 
         // RAC2's saved quick-select slots and owned bytes drive the number
@@ -845,12 +861,12 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
 
         // No weapon switching while inside the wheel / a menu.
         g_host->phase = OPENRAC_PLAY_MENU;
-        at<std::int32_t>(0x001A8BB0u) = 4;
+        at<std::int32_t>(kRac2LevelMode) = 4;
         tick();
         press(30); // Digit1
         read_pad();
         CHECK(g_host->equipped_id == 16);
-        at<std::int32_t>(0x001A8BB0u) = 0;
+        at<std::int32_t>(kRac2LevelMode) = 0;
 
         // Menu cursor motion sends a d-pad tap, and clicking confirms
         // the highlighted entry (not yet pixel-precise hover targeting).
@@ -891,6 +907,7 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
 
     // An unsupported third game is refused; restore the RAC1 mock for other tests.
     {
+        g_host->relocate_rac2_mode = false;
         openrac_api other = make_api();
         other.game = "rac3";
         g_host->failed.clear();
