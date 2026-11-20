@@ -680,11 +680,35 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         CHECK(r.held(kbm::kCross));
         CHECK(r.bytes[5] < 0x80);
 
-        // Front end: confirm must be Cross alone, not Cross + Start,
-        // which caused the RAC2 main menu to go back.
+        // The title / Press Start screen needs Start rather than Cross.
+        // This is the NTSC address of the front-end's current-screen pointer
+        // and GUI instance (both are zero before the menu is entered).
+        constexpr std::uint32_t kMenuCurrent = 0x001F2840u + 0x14u;
+        constexpr std::uint32_t kGuiInstance = 0x001A8CFCu;
+        at<std::uint32_t>(kMenuCurrent) = 0;
+        at<std::uint32_t>(kGuiInstance) = 0;
         g_host->phase = OPENRAC_PLAY_FRONT_END;
         tick();
         press(40);  // USB HID Enter
+        const Report title = read_pad();
+        CHECK(title.held(kbm::kStart));
+        CHECK(!title.held(kbm::kCross));
+        CHECK(!title.held(kbm::kTriangle));
+
+        // The same held key must not also select New Game when the screen
+        // changes to the interactive menu. The button must be released.
+        at<std::uint32_t>(kMenuCurrent) = 0x00160000u;
+        at<std::uint32_t>(kGuiInstance) = 0x00170000u;
+        tick();
+        hold(40);
+        const Report held_across_screen = read_pad();
+        CHECK(!held_across_screen.held(kbm::kStart));
+        CHECK(!held_across_screen.held(kbm::kCross));
+
+        tick(); // release Enter
+        read_pad();
+        tick();
+        press(40);
         const Report enter = read_pad();
         CHECK(enter.held(kbm::kCross));
         CHECK(!enter.held(kbm::kStart));
@@ -702,6 +726,13 @@ void test_the_library_loads_on_each_disc_and_refuses_another_game(const char* li
         const Report back = read_pad();
         CHECK(back.held(kbm::kTriangle));
         CHECK(!back.held(kbm::kCross));
+
+        tick();
+        press(19);  // USB HID KeyP: explicit Start fallback
+        const Report start_fallback = read_pad();
+        CHECK(start_fallback.held(kbm::kStart));
+        CHECK(!start_fallback.held(kbm::kTriangle));
+        CHECK(!start_fallback.held(kbm::kCross));
     }
 
     // An unsupported third game is refused; restore the RAC1 mock for other tests.
