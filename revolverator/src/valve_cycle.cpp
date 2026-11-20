@@ -11,8 +11,8 @@ constexpr float tau=6.2831853071795864769f;
 // the drill head is visibly turning much faster.
 constexpr float idle_pulses_per_second=.9f;
 constexpr float loaded_pulses_per_second=2.45f;
-constexpr float idle_puffs_per_second=1.6f;
-constexpr float loaded_puffs_per_second=15.f;
+constexpr float idle_puffs_per_second=4.2f;
+constexpr float loaded_puffs_per_second=24.f;
 }
 
 ValveFrame ValveCycle::update(float seconds,float angular_speed,bool powered,bool paused) {
@@ -31,7 +31,7 @@ ValveFrame ValveCycle::update(float seconds,float angular_speed,bool powered,boo
     const float compression=.5f-.5f*std::cos(phase_);
     scale_=1.f+(.055f+.030f*load_)*compression*compression;
 
-    // A fractional accumulator makes the same gentle stream at 50 and 60 Hz.
+    // Accumulate fractional puffs so the plume has the same density at 50 and 60 Hz.
     smoke_budget_+=seconds*(idle_puffs_per_second+(loaded_puffs_per_second-idle_puffs_per_second)*load_);
     const auto puffs=static_cast<unsigned>(smoke_budget_);
     smoke_budget_-=float(puffs);
