@@ -231,7 +231,11 @@ void NativeArsenal::give_item(int native_item, int equip, bool custom_grant, Giv
         }
     }
     const auto& quick = registry_.quick();
-    if (registry_.owned(arsenal::RevolveratorKey) &&
+    // EQS owns the visible and saved native wheel assignments. Auto-picking
+    // an empty slot in Revolverator's private logical registry can otherwise
+    // draw a Revolverator icon on top of an unrelated EQS gadget.
+    if (!eqs_probe::installed() &&
+        registry_.owned(arsenal::RevolveratorKey) &&
         std::find(quick.begin(), quick.end(), arsenal::RevolveratorKey) == quick.end()) {
         const auto empty = std::find(quick.begin(), quick.end(), 0u);
         if (empty != quick.end()) registry_.assign_quick(std::size_t(empty - quick.begin()), arsenal::RevolveratorKey);
