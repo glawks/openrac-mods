@@ -42,6 +42,12 @@ public:
     };
     AttackStatus last_attack_status() const noexcept { return last_attack_status_; }
     unsigned attack_attempt_count() const noexcept { return attack_attempt_count_; }
+    // Snapshot the native guest count directly around the native ammo call.
+    // This distinguishes a successful return without decrement from a
+    // decrement which another projection later overwrites.
+    int last_attack_before() const noexcept { return last_attack_before_; }
+    int last_attack_after() const noexcept { return last_attack_after_; }
+    int last_attack_native_result() const noexcept { return last_attack_native_result_; }
 
     // Wrap rac1.moby.ammo_pickup.update. Only pickups whose native pvars name
     // inventory slot 18 receive the companion model's render-only class ID.
@@ -55,6 +61,8 @@ private:
     bool metadata_ready_ = false;
     AttackStatus last_attack_status_ = AttackStatus::NotAttempted;
     unsigned attack_attempt_count_ = 0;
+    int last_attack_before_ = -1, last_attack_after_ = -1;
+    int last_attack_native_result_ = -1;
     int plural_id_ = 0, singular_id_ = 0;
 
     struct Patch {
