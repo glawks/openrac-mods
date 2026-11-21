@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #include "native_arsenal.hpp"
+#include "eqs_probe.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -99,7 +100,20 @@ void NativeArsenal::apply_tables(bool custom){
             const auto width=field_width(target.size(),i);
             // Only fields owned by the adapter are projected. Unrelated damage,
             // animation and material edits remain under their original owner.
-            if(field_owned(table.mask,i,width)){
+            // EQS has multiple wheels of *native* weapon IDs. Revolverator
+            // and Walloper share carrier 18, so changing the carrier's global
+            // icon definition makes every Walloper on every EQS page appear to
+            // be Revolverator whenever it is equipped. Keep the stock icon
+            // stable under EQS; Revolverator's page-one explicit assignment
+            // is rendered by its existing per-slot custom icon overlay.
+            // This is the icon field only, not ammo, ownership, gameplay or
+            // the rest of the custom projection.
+            const bool shared_wheel_icon=eqs_probe::installed() &&
+                table.original.size()==76 && i==0x38 && width==2;
+            if(shared_wheel_icon){
+                std::memcpy(api_->memory+table.address+i,table.original.data()+i,width);
+                std::memcpy(table.last.data()+i,table.original.data()+i,width);
+            }else if(field_owned(table.mask,i,width)){
                 std::memcpy(api_->memory+table.address+i,target.data()+i,width);
                 std::memcpy(table.last.data()+i,target.data()+i,width);
             }
@@ -230,7 +244,11 @@ void NativeArsenal::give_item(int native_item, int equip, bool custom_grant, Giv
         }
     }
     const auto& quick = registry_.quick();
-    if (registry_.owned(arsenal::RevolveratorKey) &&
+    // EQS owns the visible and saved native wheel assignments. Auto-picking
+    // an empty slot in Revolverator's private logical registry can otherwise
+    // draw a Revolverator icon on top of an unrelated EQS gadget.
+    if (!eqs_probe::installed() &&
+        registry_.owned(arsenal::RevolveratorKey) &&
         std::find(quick.begin(), quick.end(), arsenal::RevolveratorKey) == quick.end()) {
         const auto empty = std::find(quick.begin(), quick.end(), 0u);
         if (empty != quick.end()) registry_.assign_quick(std::size_t(empty - quick.begin()), arsenal::RevolveratorKey);
@@ -290,6 +308,13 @@ void NativeArsenal::observe_equipped(){
         registry_.equip(unsigned(held));
 }
 void NativeArsenal::project_quick_slots(bool native_save){
+    // EQS owns the game's native favourites array for all its pages.
+    // Revolverator has only one logical eight-slot registry; projecting it
+    // (on grants, level start, or equipment restoration) silently replaces
+    // EQS's page-one assignments, then poisons subsequent editor captures.
+    // Keep logical Revolverator state but do not write native favourites.
+    // Without EQS, retain the exact original projection and save behaviour.
+    if(eqs_probe::installed())return;
     auto slots=registry_.native_slots();
     if(native_save)for(unsigned i=0;i<slots.size();++i)if(registry_.quick()[i]>=arsenal::Registry::FirstCustomKey)slots[i]=0;
     write(global(favourites),slots);
