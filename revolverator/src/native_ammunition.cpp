@@ -129,12 +129,26 @@ void NativeAmmunition::frame() {
 }
 
 bool NativeAmmunition::begin_attack() {
+    ++attack_attempt_count_;
     frame();
-    if(!in_level() || !metadata_ready_) return false;
+    if(!in_level()){last_attack_status_=AttackStatus::InvalidLevel;return false;}
+    if(!metadata_ready_){last_attack_status_=AttackStatus::MetadataUnavailable;return false;}
     const unsigned hero = global(kHero);
-    if(read<int>(hero+0x10b8) != item_id || read<int>(hero+0x10b4) != 2 ||
-       read<int>(hero+0x22a8) <= 0 || read<int>(level(0x15f5c4)) != 0) return false;
-    return take_ammo_(item_id,1) != 0;
+    if(read<int>(hero+0x10b8) != item_id){
+        last_attack_status_=AttackStatus::WrongHeldItem;return false;
+    }
+    if(read<int>(hero+0x10b4) != 2){
+        last_attack_status_=AttackStatus::WrongItemState;return false;
+    }
+    if(read<int>(hero+0x22a8) <= 0){
+        last_attack_status_=AttackStatus::PlayerNotAlive;return false;
+    }
+    if(read<int>(level(0x15f5c4)) != 0){
+        last_attack_status_=AttackStatus::WrongGameMode;return false;
+    }
+    const bool taken=take_ammo_(item_id,1) != 0;
+    last_attack_status_=taken?AttackStatus::Accepted:AttackStatus::NativeRejected;
+    return taken;
 }
 
 int NativeAmmunition::count() const {
@@ -221,5 +235,7 @@ void NativeAmmunition::reset() {
     }
     pickups_.clear(); patches_.clear(); text_bank_={};
     level_=-1; metadata_ready_=false;plural_id_=singular_id_=0;
+    // Keep the latest attack status across a same-level respawn, so the
+    // diagnostic can report it; gameplay never uses these fields.
 }
 }
