@@ -17,6 +17,14 @@ It is not a finished compatibility fix.
   into the native favourites array during level loading, grants, restoration,
   or HUD initialization. It retains page-one logical weapon identity for
   Revolverator's own rendering/selection.
+- With EQS installed, Revolverator no longer auto-claims a private quick slot
+  on its first purchase, since that slot might hold an EQS gadget. Its page-one
+  custom icon and selection now check for the actual Walloper carrier ID 18
+  in that native slot before presenting Revolverator.
+- The separate EQS `compatibility-dev` build now tolerates **only** the
+  Walloper (60018) / Revolverator (60037) icon pair in HUD layout validation,
+  while still requiring all native item IDs to match. Both experimental
+  modules need updating to test the equipped-HUD issue.
 - Revolverator as an independent **custom weapon on pages 2–8 is not supported**
   by this first experiment. Native item ID 18 is only the Walloper carrier and
   is not Revolverator's logical key `0x10012`.
@@ -63,7 +71,11 @@ It is not a finished compatibility fix.
    not duplicated.
 4. Open the gameplay wheel and verify native icons and actual equip behaviour.
    Check whether EQS still logs `Quick Select HUD layout mismatch`.
-5. Check page 1 and Revolverator's normal weapon independently.
+5. Check page 1 and Revolverator's normal weapon independently. Equip
+   Revolverator, view pages 1–4, then switch to a native weapon and repeat.
+   Each page should show its own native items regardless of the held weapon.
+   After acquiring Revolverator, check that a gadget doesn't gain its icon
+   unless the corresponding native wheel slot really uses carrier 18.
 6. Stop if the game crashes or assignments are unexpectedly cleared. Do not
    attempt to assign Revolverator itself to secondary pages in this iteration.
 
