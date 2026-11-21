@@ -2,6 +2,7 @@
 // Copyright (c) 2026 noire342
 #include "presentation.hpp"
 #include "hud_table_scope.hpp"
+#include "eqs_probe.hpp"
 #include "native_icon_variants.hpp"
 #include "localization.hpp"
 #include "ammunition_icon_data.hpp"
@@ -186,6 +187,10 @@ void Presentation::before_hud(unsigned){
 void Presentation::draw_base(unsigned e,void(*previous_relay)(unsigned)){
  (void)previous_relay;
  HudTableScope tables(*this);
+ // EQS can draw another quick-select page between our frame tick and
+ // the ammo-HUD relay. Refresh our owned GS texture cache at draw time so
+ // the cloned Revolverator tile cannot reuse another page's texture.
+ if(eqs_probe::installed())hd_.frame();
  const int before=read<int>(e);
  if(before==60018)write<int>(e,custom_icon_bank);
  // The shared relay may already belong to native Walloper XP decorations.
@@ -197,7 +202,13 @@ int Presentation::draw_quick_selector(unsigned e,int(*original)(unsigned),const 
  if(!original)return 0;
  if(read<int>(level(0x15fa90))!=8)return original(e);
  HudTableScope tables(*this);
+ // The native wheel may upload another icon atlas while EQS is rendering.
+ // Invalidate only our own cloned icon page cache immediately before both
+ // the native base and the custom per-slot overlay. No wheel IDs are changed.
+ const bool eqs=eqs_probe::installed();
+ if(eqs)hd_.frame();
  const bool hidden=hd_.before_base();const int result=original(e);hd_.after_base();
+ if(eqs)hd_.frame();
  if(!hidden)return result;
  const int timer=read<int>(level(0x15f780));if(timer<=0)return result;
  const float open=std::clamp(read<unsigned char>(e+0x70)/float(timer),0.f,1.f);
