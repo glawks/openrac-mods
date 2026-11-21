@@ -151,6 +151,38 @@ int main(){
     {Fixture f;f.seed(false);NativeArsenal arsenal(&f.api,f.registry,f.view);f.initialize(arsenal);
      require(!f.registry.owned(18)&&!f.registry.owned(RevolveratorKey)&&f.get<unsigned char>(f.address(owned,1))==0,
              "a new campaign with neither weapon does not gain either one from a projection");}
+    // A death respawn can reinitialize level-local vendor metadata without a
+    // logical equipment change. Recover only our captured stock-to-custom
+    // ammo fields while the custom carrier is actually projected.
+    {Fixture f;NativeArsenal arsenal(&f.api,f.registry,f.view);arsenal.begin_level();
+     f.custom_metadata();
+     for(unsigned offset:{8u,10u,12u,14u,18u})
+         f.put<unsigned short>(f.address(prices,24)+offset,
+             static_cast<unsigned short>(offset==8u||offset==10u?25:offset==12u?2:20));
+     arsenal.finish_level();
+     require(f.registry.set_state(RevolveratorKey,{true,13,39})&&
+             f.registry.equip(RevolveratorKey),"respawn test equips custom with 13 rounds");
+     arsenal.restore_gameplay();
+     require(f.get<unsigned short>(f.address(prices,24)+14)==20,
+             "custom capacity initially projected");
+     f.put<unsigned short>(f.address(prices,24)+14,0);
+     f.put<unsigned short>(f.address(prices,24)+8,0);
+     f.put<unsigned short>(f.address(prices,24)+10,47); // unrelated live edit
+     arsenal.restore_gameplay(); // same key: transition is deliberately skipped
+     require(f.get<unsigned short>(f.address(prices,24)+14)==20&&
+             f.get<unsigned short>(f.address(prices,24)+8)==25,
+             "same-level respawn restores vanished custom capacity and price");
+     require(f.get<unsigned short>(f.address(prices,24)+10)==47,
+             "respawn metadata recovery does not replace another owner's value");
+     require(f.registry.state(RevolveratorKey)->ammo==13,
+             "recovering ammo metadata must never refill or reduce custom ammo");
+     arsenal.project(NativeWalloperKey);
+     require(f.get<unsigned short>(f.address(prices,24)+14)==0,
+             "normal Walloper projection still has its original native capacity");
+     arsenal.project(RevolveratorKey);
+     require(f.get<unsigned short>(f.address(prices,24)+14)==20,
+             "custom capacity returns on a real equip transition");
+    }
     {Fixture f;NativeArsenal arsenal(&f.api,f.registry,f.view);arsenal.begin_level();
      require(f.registry.set_state(RevolveratorKey,{true,10,39})&&f.registry.equip(RevolveratorKey),"restore equipped custom identity before metadata initialization finishes");
      f.custom_metadata();arsenal.finish_level();
