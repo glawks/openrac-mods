@@ -33,6 +33,15 @@ public:
     bool begin_attack();
     int count() const;
     int maximum() const;
+    // Diagnostic-only: records why the most recent attack request succeeded
+    // or was rejected. Does not change ammunition or attack conditions.
+    enum class AttackStatus : int {
+        NotAttempted = 0, Accepted = 1, InvalidLevel = 2,
+        MetadataUnavailable = 3, WrongHeldItem = 4, WrongItemState = 5,
+        PlayerNotAlive = 6, WrongGameMode = 7, NativeRejected = 8
+    };
+    AttackStatus last_attack_status() const noexcept { return last_attack_status_; }
+    unsigned attack_attempt_count() const noexcept { return attack_attempt_count_; }
 
     // Wrap rac1.moby.ammo_pickup.update. Only pickups whose native pvars name
     // inventory slot 18 receive the companion model's render-only class ID.
@@ -44,6 +53,8 @@ private:
     TakeAmmo take_ammo_;
     int level_ = -1;
     bool metadata_ready_ = false;
+    AttackStatus last_attack_status_ = AttackStatus::NotAttempted;
+    unsigned attack_attempt_count_ = 0;
     int plural_id_ = 0, singular_id_ = 0;
 
     struct Patch {
