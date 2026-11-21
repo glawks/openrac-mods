@@ -40,6 +40,11 @@ struct Session {
  PrimaryButton primary_button;
  bool golden()const{const auto* state=registry.state(arsenal::RevolveratorKey);return state&&state->owned&&state->golden;}
  unsigned grant_override=0,native_save_depth=0;bool new_game_plus=false;
+ // Diagnostic-only counters. These never affect ammunition or effects.
+ unsigned valve_trace_events=0,ammo_trace_events=0;
+ int last_trace_native_ammo=-1,last_trace_custom_ammo=-1;
+ int last_trace_projected=-1,last_trace_equipped=-1;
+ bool ammo_trace_initialized=false;
  std::deque<NativeArsenalXP::LevelUp> animations,events;
  Session(const openrac_api* a,openrac_mod* m):api(a),mod(m),ammunition(a,&arena,true),alias(a),visuals(a,arena,core_arena,m),vendor(a,visuals.native_alias(),arena),vendor_icons(a,vendor),equip_audio(a),world(a,m,ammunition,visuals.held_rotor(),core_arena),controller(world),presentation(a,m,&arena,true),arsenal(a,registry,presentation),menu(a,arena,arsenal),saves(a,m,arsenal),xp(a,m,arsenal),gold_vendor(a,m,registry,visuals.native_alias()),acquisition(a,m,arena,{this,
   +[](void* user){auto& s=*static_cast<Session*>(user);s.presentation.set_golden(s.golden());s.arsenal.project(arsenal::RevolveratorKey);},
@@ -55,6 +60,7 @@ struct Session {
   primary_button.reset();
   acquisition.reset();gold_vendor.reset();
   controller.cancel();visuals.reset();world.reset();menu.reset();arsenal.reset();presentation.reset();vendor.reset();alias.reset();ammunition.reset();core_arena.reset();arena.reset();xp.reset();animations.clear();events.clear();
+  valve_trace_events=ammo_trace_events=0;ammo_trace_initialized=false;
  }
  void prepare_level(){
   arsenal.begin_level();ammunition.frame();alias.frame();visuals.begin_native_frame();vendor.set_preview_class(alias.ready()?NativeAmmoAlias::native_class:225);vendor.frame();
@@ -137,10 +143,41 @@ struct Session {
   if(const auto event=visuals.poll_equip())equip_audio.play(event->actor);
   else if(f.equipped)equip_audio.suppress_native_appearance(world.weapon());
   world.contact_sparks(controller.attack_phase(),controller.spin_angle());
-  if(const auto vent=visuals.emit_valve_smoke(held);vent&&api->setting_bool(mod,"trace")){
-   char line[200];std::snprintf(line,sizeof line,"valve smoke puffs=%u load=%.3f scale=%.4f at=(%.5f,%.5f,%.5f)",
-       vent->count,vent->load,vent->scale,vent->point.x,vent->point.y,vent->point.z);
-   api->log(mod,OPENRAC_LOG_INFO,line);
+  // Trace only state transitions, not every frame of a continuously emitting
+  // particle effect. Diagnostic logging must not drown out meaningful events.
+  const bool trace=api->setting_bool(mod,"trace")!=0;
+  if(trace){
+   const auto* saved=registry.state(arsenal::RevolveratorKey);
+   const int native_ammo=ammunition.count();
+   const int custom_ammo=saved?int(saved->ammo):-1;
+   const int projected=int(arsenal.projected());
+   const int equipped=int(registry.equipped());
+   if(!ammo_trace_initialized||native_ammo!=last_trace_native_ammo||
+       custom_ammo!=last_trace_custom_ammo||projected!=last_trace_projected||
+       equipped!=last_trace_equipped){
+    last_trace_native_ammo=native_ammo;last_trace_custom_ammo=custom_ammo;
+    last_trace_projected=projected;last_trace_equipped=equipped;
+    ammo_trace_initialized=true;
+    if(ammo_trace_events<64){
+     ++ammo_trace_events;
+     char line[180];std::snprintf(line,sizeof line,
+       "ammo state native=%d custom=%d projected=%d equipped=%d event=%u",
+       native_ammo,custom_ammo,projected,equipped,ammo_trace_events);
+     api->log(mod,OPENRAC_LOG_INFO,line);
+     if(ammo_trace_events==64)
+      api->log(mod,OPENRAC_LOG_INFO,"ammo state trace cap reached (64 changes)");
+    }
+   }
+  }
+  if(const auto vent=visuals.emit_valve_smoke(held);vent&&trace){
+   ++valve_trace_events;
+   if(valve_trace_events<=4||(valve_trace_events%240)==0){
+    char line[200];std::snprintf(line,sizeof line,
+      "valve smoke event=%u puffs=%u load=%.3f scale=%.4f at=(%.5f,%.5f,%.5f)",
+      valve_trace_events,vent->count,vent->load,vent->scale,
+      vent->point.x,vent->point.y,vent->point.z);
+    api->log(mod,OPENRAC_LOG_INFO,line);
+   }
   }
   world.set_drill_head_scale(visuals.controller().radial_scale(),visuals.controller().axial_scale());
   arsenal.commit();
