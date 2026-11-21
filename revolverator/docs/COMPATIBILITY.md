@@ -59,6 +59,39 @@ Unsupported XP providers are reported rather than silently crediting the
 native carrier. No other custom-weapon or shared-inventory integration is
 claimed solely because it shares a carrier or an API header.
 
+## Optional Expanded Quick Select integration (experimental)
+
+On **Windows x64**, Revolverator can detect the optional, read-only
+`openrac_expanded_quick_select_query(1)` API provided by glawks'
+[Expanded Quick Select](https://github.com/glawks/expanded-quick-select)
+`compatibility-dev` branch. This is **not present in EQS v1.0.2** and does
+not make EQS a dependency of Revolverator. Without that API, normal
+single-wheel behaviour is unchanged.
+
+When the API is available, EQS remains the owner of the native eight-slot
+favourites and its independent pages. Revolverator no longer projects its
+single-page logical bindings over EQS's native wheel, avoids custom overlays
+on secondary pages and keeps the shared Walloper (native item 18) icon
+definition stable. Revolverator still has its own distinct logical weapon
+key `0x10012`, but the EQS API reports only **native IDs**, so assigning
+Revolverator as a unique custom weapon on pages 2 and later is **not**
+implemented. Windows-only detection uses the already-loaded EQS module and
+introduces no loader or binary dependency.
+
+**Known remaining issue:** after Ratchet dies and respawns, the Revolverator
+icon may revert to the native Walloper icon or render incorrectly. This
+needs an in-game fix and verification before describing the integration as
+complete. A separate original Revolverator issue can cause the native ammo
+capacity to become zero on respawn; it predates this integration and is not
+changed by the EQS compatibility patch.
+
+Manual acceptance checks before release: install both test builds, verify
+different weapon layouts across pages 1–4 with Revolverator equipped and
+unequipped, change a page 2/3/4 slot, save and reload, open the vendor and
+purchase the weapon, then die with Revolverator equipped and confirm icon
+and wheel state after respawn. Repeat with EQS disabled to ensure the stock
+single-wheel Revolverator behaviour remains unchanged.
+
 ## Evidence boundary
 
 The release receipt records its actual official client, source, mod DLL,
