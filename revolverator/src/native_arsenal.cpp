@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 noire342
 #include "native_arsenal.hpp"
+#include "eqs_probe.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -290,6 +291,13 @@ void NativeArsenal::observe_equipped(){
         registry_.equip(unsigned(held));
 }
 void NativeArsenal::project_quick_slots(bool native_save){
+    // EQS owns the game's native favourites array for all its pages.
+    // Revolverator has only one logical eight-slot registry; projecting it
+    // (on grants, level start, or equipment restoration) silently replaces
+    // EQS's page-one assignments, then poisons subsequent editor captures.
+    // Keep logical Revolverator state but do not write native favourites.
+    // Without EQS, retain the exact original projection and save behaviour.
+    if(eqs_probe::installed())return;
     auto slots=registry_.native_slots();
     if(native_save)for(unsigned i=0;i<slots.size();++i)if(registry_.quick()[i]>=arsenal::Registry::FirstCustomKey)slots[i]=0;
     write(global(favourites),slots);
