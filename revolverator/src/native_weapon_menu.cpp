@@ -266,11 +266,17 @@ int NativeWeaponMenu::slots_update(unsigned screen,Call original){
         Projection view(model_,key,true);result=original(screen);
     }
     if((buttons&Cross)&&owned(key)){
-        // EQS owns independent secondary pages. Keep the native change made
-        // by original(screen), and do NOT replace it with registry page 1.
-        // A separate page-aware logical registry is still required for the
-        // custom Revolverator weapon on secondary pages.
-        if(!eqs_probe::editor_secondary()){
+        // The original hook already modifies the chosen native slot.
+        // EQS owns *all* native wheel pages, including page one. Never
+        // replace its visible editor ring with the complete Revolverator
+        // one-page logical registry when EQS is present.
+        if(eqs_probe::installed()){
+            // On page one, track logical identity for custom render/equip.
+            // Secondary pages need a separate per-page custom-key store,
+            // which this experiment deliberately does not implement.
+            if(!eqs_probe::editor_secondary())
+                model_.registry().assign_quick(unsigned(slot),key);
+        }else{
             model_.registry().assign_quick(unsigned(slot),key);
             write_native_slots(screen);
         }
