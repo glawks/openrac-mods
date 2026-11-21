@@ -12,14 +12,20 @@ It is not a finished compatibility fix.
   `expanded_quick_select.dll` symbol `openrac_expanded_quick_select_query`
   without adding a dependency or loading the module itself.
 - Without the EQS API present, Revolverator keeps its original behaviour.
-- When EQS is active, Revolverator avoids its complete eight-slot editor
-  overwrite on *secondary* pages and avoids projecting its single page-one
-  registry over the native wheel during HUD initialization.
+- When EQS is active, Revolverator avoids complete eight-slot writes to
+  **any** of EQS's editor pages, and avoids projecting its one-page registry
+  into the native favourites array during level loading, grants, restoration,
+  or HUD initialization. It retains page-one logical weapon identity for
+  Revolverator's own rendering/selection.
 - Revolverator as an independent **custom weapon on pages 2–8 is not supported**
   by this first experiment. Native item ID 18 is only the Walloper carrier and
   is not Revolverator's logical key `0x10012`.
 - The user's previously observed `HUD layout mismatch` may have additional
   causes and remains to be retested.
+- This revision also addresses the user-observed case where wheels initially
+  work but selecting Revolverator reintroduces broader changes: the shared
+  global favourites array must not be repopulated from Revolverator's single
+  registry while EQS owns it.
 - The fork's `main` and upstream `noire342/openrac-mods` are unchanged.
 
 ## How to get the test build
