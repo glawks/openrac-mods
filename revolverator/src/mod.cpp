@@ -46,7 +46,7 @@ struct Session {
  int last_trace_projected=-1,last_trace_equipped=-1;
  int last_trace_capacity=-1,last_trace_hero_item=-1,last_trace_hero_kind=-1;
  int last_trace_attack_status=-1;
- unsigned last_trace_epoch=0;
+ unsigned last_trace_epoch=0,last_trace_attack_tries=0;
  bool ammo_trace_initialized=false;
  std::deque<NativeArsenalXP::LevelUp> animations,events;
  Session(const openrac_api* a,openrac_mod* m):api(a),mod(m),ammunition(a,&arena,true),alias(a),visuals(a,arena,core_arena,m),vendor(a,visuals.native_alias(),arena),vendor_icons(a,vendor),equip_audio(a),world(a,m,ammunition,visuals.held_rotor(),core_arena),controller(world),presentation(a,m,&arena,true),arsenal(a,registry,presentation),menu(a,arena,arsenal),saves(a,m,arsenal),xp(a,m,arsenal),gold_vendor(a,m,registry,visuals.native_alias()),acquisition(a,m,arena,{this,
@@ -159,23 +159,27 @@ struct Session {
    const int hero_item=world.read<int>(world.hero()+0x10b8);
    const int hero_kind=world.read<int>(world.hero()+0x10b4);
    const int attack_status=int(ammunition.last_attack_status());
+   const unsigned attack_tries=ammunition.attack_attempt_count();
    if(!ammo_trace_initialized||native_ammo!=last_trace_native_ammo||
        custom_ammo!=last_trace_custom_ammo||projected!=last_trace_projected||
        equipped!=last_trace_equipped||capacity!=last_trace_capacity||
        hero_item!=last_trace_hero_item||hero_kind!=last_trace_hero_kind||
-       attack_status!=last_trace_attack_status||epoch!=last_trace_epoch){
+       attack_status!=last_trace_attack_status||epoch!=last_trace_epoch||
+       attack_tries!=last_trace_attack_tries){
     last_trace_native_ammo=native_ammo;last_trace_custom_ammo=custom_ammo;
     last_trace_projected=projected;last_trace_equipped=equipped;
     last_trace_capacity=capacity;last_trace_hero_item=hero_item;
     last_trace_hero_kind=hero_kind;last_trace_attack_status=attack_status;
-    last_trace_epoch=epoch;ammo_trace_initialized=true;
+    last_trace_epoch=epoch;last_trace_attack_tries=attack_tries;
+    ammo_trace_initialized=true;
     if(ammo_trace_events<64){
      ++ammo_trace_events;
-     char line[260];std::snprintf(line,sizeof line,
-       "ammo state native=%d custom=%d max=%d projected=%d equipped=%d hero_item=%d kind=%d attack_status=%d tries=%u epoch=%u event=%u",
+     char line[320];std::snprintf(line,sizeof line,
+       "ammo state native=%d custom=%d max=%d projected=%d equipped=%d hero_item=%d kind=%d attack_status=%d tries=%u consume_before=%d consume_after=%d consume_result=%d epoch=%u event=%u",
        native_ammo,custom_ammo,capacity,projected,equipped,
-       hero_item,hero_kind,attack_status,ammunition.attack_attempt_count(),
-       epoch,ammo_trace_events);
+       hero_item,hero_kind,attack_status,attack_tries,
+       ammunition.last_attack_before(),ammunition.last_attack_after(),
+       ammunition.last_attack_native_result(),epoch,ammo_trace_events);
      api->log(mod,OPENRAC_LOG_INFO,line);
      if(ammo_trace_events==64)
       api->log(mod,OPENRAC_LOG_INFO,"ammo state trace cap reached (64 changes)");
