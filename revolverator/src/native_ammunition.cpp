@@ -130,6 +130,7 @@ void NativeAmmunition::frame() {
 
 bool NativeAmmunition::begin_attack() {
     ++attack_attempt_count_;
+    last_attack_before_=last_attack_after_=last_attack_native_result_=-1;
     frame();
     if(!in_level()){last_attack_status_=AttackStatus::InvalidLevel;return false;}
     if(!metadata_ready_){last_attack_status_=AttackStatus::MetadataUnavailable;return false;}
@@ -146,7 +147,10 @@ bool NativeAmmunition::begin_attack() {
     if(read<int>(level(0x15f5c4)) != 0){
         last_attack_status_=AttackStatus::WrongGameMode;return false;
     }
-    const bool taken=take_ammo_(item_id,1) != 0;
+    last_attack_before_=count();
+    last_attack_native_result_=take_ammo_(item_id,1);
+    last_attack_after_=count();
+    const bool taken=last_attack_native_result_!=0;
     last_attack_status_=taken?AttackStatus::Accepted:AttackStatus::NativeRejected;
     return taken;
 }
