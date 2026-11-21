@@ -63,10 +63,10 @@ claimed solely because it shares a carrier or an API header.
 
 On **Windows x64**, Revolverator can detect the optional, read-only
 `openrac_expanded_quick_select_query(1)` API provided by glawks'
-[Expanded Quick Select](https://github.com/glawks/expanded-quick-select)
-`compatibility-dev` branch. This is **not present in EQS v1.0.2** and does
-not make EQS a dependency of Revolverator. Without that API, normal
-single-wheel behaviour is unchanged.
+[Expanded Quick Select v1.0.3](https://github.com/glawks/expanded-quick-select/releases/tag/v1.0.3).
+This API is now available in the public EQS release and does not make EQS
+a dependency of Revolverator. Without it, normal single-wheel behaviour
+is unchanged.
 
 When the API is available, EQS remains the owner of the native eight-slot
 favourites and its independent pages. Revolverator no longer projects its
