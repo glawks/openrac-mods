@@ -21,6 +21,14 @@ It is not a finished compatibility fix.
   on its first purchase, since that slot might hold an EQS gadget. Its page-one
   custom icon and selection now check for the actual Walloper carrier ID 18
   in that native slot before presenting Revolverator.
+- The carrier's *global* item icon is kept as native Walloper while EQS is
+  managing multiple wheels. Previously equipping Revolverator replaced the
+  global icon for native item 18; every page containing a native Walloper then
+  appeared to gain Revolverator. The custom icon may still be drawn over an
+  explicit page-one logical Revolverator assignment.
+- This does NOT yet allow independent Revolverator assignments on pages 2–8.
+  A page-specific logical custom-weapon identity and persistence are required
+  before custom item ID 65554 can be distinguished from ordinary Walloper ID 18.
 - The separate EQS `compatibility-dev` build now tolerates **only** the
   Walloper (60018) / Revolverator (60037) icon pair in HUD layout validation,
   while still requiring all native item IDs to match. Both experimental
@@ -73,9 +81,12 @@ It is not a finished compatibility fix.
    Check whether EQS still logs `Quick Select HUD layout mismatch`.
 5. Check page 1 and Revolverator's normal weapon independently. Equip
    Revolverator, view pages 1–4, then switch to a native weapon and repeat.
-   Each page should show its own native items regardless of the held weapon.
-   After acquiring Revolverator, check that a gadget doesn't gain its icon
-   unless the corresponding native wheel slot really uses carrier 18.
+   A native Walloper on a secondary page must REMAIN a Walloper when
+   Revolverator is equipped. The screen should not spontaneously show a
+   Revolverator icon on pages 2–4, and should not duplicate page one.
+   After acquiring Revolverator, check that a gadget doesn't gain its icon.
+   DO NOT remove or reassign a Walloper icon on a secondary page merely
+   because a previous build displayed it as Revolverator.
 6. Stop if the game crashes or assignments are unexpectedly cleared. Do not
    attempt to assign Revolverator itself to secondary pages in this iteration.
 
