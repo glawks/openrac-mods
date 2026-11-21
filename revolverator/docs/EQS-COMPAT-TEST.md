@@ -44,6 +44,34 @@ It is not a finished compatibility fix.
   registry while EQS owns it.
 - The fork's `main` and upstream `noire342/openrac-mods` are unchanged.
 
+## Respawn ammo regression (21 November 2026)
+
+A reproducible issue was found after Ratchet dies with Revolverator equipped:
+the saved and transported ammo counts remain nonzero (e.g., 13/13), but the
+native ammo-capacity metadata at vendor field +14 becomes **0**. Native TakeAmmo
+returns success without decrementing ammunition, while Revolverator's
+controller still plays the native Walloper-strike animation.
+
+The current test patch restores **only cached, owned vendor ammo metadata**
+(fields +8, +10, +12, +14 and +18) that reverted exactly to their captured
+native values, **only while the custom Revolverator projection is active**.
+It does not refill ammo, modify the native TakeAmmo function, change melee
+animations, or overwrite a conflicting third-party field. A regression test
+simulates this same-level reload and verifies that live custom ammo remains
+unchanged.
+
+After installing the current test build:
+1. Confirm Revolverator starts with a recognised capacity of 20.
+2. Fire enough times to leave e.g. 13 rounds. Save a backup.
+3. Die with Revolverator equipped; then respawn and attack once.
+4. Check that the new log shows `max=20`, `consume_before=13`,
+   `consume_after=12` (assuming one successful strike), and `custom=12`
+   after commit.
+5. Confirm the wheel remains independent. The currently preserved native
+   Walloper icon may still appear for Revolverator after a respawn; that is
+   a distinct custom-identity UI issue and must not be fixed by globally
+   replacing the Walloper icon.
+
 ## How to get the test build
 
 1. Open this fork's **Actions** tab. Newly forked repositories normally require
