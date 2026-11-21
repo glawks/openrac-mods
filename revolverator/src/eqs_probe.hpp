@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Experimental optional interop with glawks/expanded-quick-select (MIT API v1).
+// Optional interop with glawks/expanded-quick-select v1.0.3+ (MIT API v1).
 // Never loads another plugin or introduces a hard dependency on EQS.
 #pragma once
 #include <cstdint>
