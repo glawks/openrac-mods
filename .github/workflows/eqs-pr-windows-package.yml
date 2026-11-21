@@ -1,0 +1,78 @@
+name: Revolverator EQS PR package (Windows)
+on:
+  push:
+    branches: [eqs-compat-pr]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-eqs-test:
+    name: Build, test and package experimental Revolverator
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch pinned Revolverator SDK
+        run: python revolverator/tools/fetch_build_sdk.py
+      - name: Configure Windows x64
+        run: >-
+          cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_WEAPON_XP=OFF -DBUILD_REVOLVERATOR=ON
+          -DBUILD_ARSENAL_COMPAT=ON -DBUILD_ARSENAL_FILE_OVERLAY=ON
+          -DBUILD_SKILL_POINTS_RA=OFF -DBUILD_CINEMATIC_JOURNEYS=OFF
+          -DBUILD_ROBOT_SALVAGE=OFF -DBUILD_TESTING=ON
+          -DOpenRACMod_DIR=${{ github.workspace }}/.sdk/rotatore-build-sdk/sdk/cmake
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+      - name: Run native and regression tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Stage installation test ZIP
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json, zipfile
+          manifests = list(Path("build").rglob("openrac-mod.json"))
+          candidates = []
+          for manifest in manifests:
+              p = manifest.parent
+              try:
+                  data = json.loads(manifest.read_text(encoding="utf-8"))
+              except (ValueError, OSError):
+                  continue
+              if data.get("id") == "revolverator" and (p/"lib/windows-x86_64/revolverator.dll").is_file() and (p/"lib/windows-x86_64/arsenal_file_overlay.dll").is_file():
+                  candidates.append(p)
+          print("Revolverator candidate package dirs:", [str(p) for p in candidates])
+          if len(candidates) != 1:
+              raise SystemExit(f"Expected one complete built Revolverator package, got {len(candidates)}; scanned: {[str(m) for m in manifests]}")
+          package = candidates[0]
+          destination = Path("dist/revolverator-eqs-PR-windows-x86_64-TEST-ONLY.zip")
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=8) as z:
+              for f in sorted(package.rglob("*")):
+                  if f.is_file():
+                      z.write(f, f.relative_to(package).as_posix())
+          with zipfile.ZipFile(destination) as z:
+              assert z.testzip() is None, "CRC verification failed"
+              assert "openrac-mod.json" in z.namelist(), "missing root manifest"
+              assert "lib/windows-x86_64/revolverator.dll" in z.namelist()
+              assert "lib/windows-x86_64/arsenal_file_overlay.dll" in z.namelist()
+              print(f"Test-only package: {destination}, {len(z.namelist())} entries")
+          '@ | python -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revolverator-eqs-PR-windows-x86_64-TEST-ONLY
+          path: dist/revolverator-eqs-compat-windows-x86_64-TEST-ONLY.zip
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: revolverator-eqs-test-failure-logs
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
