@@ -94,6 +94,7 @@ void NativeArsenal::commit(){
     }else registry_.set_walloper(native_walloper());
 }
 void NativeArsenal::apply_tables(bool custom){
+    const bool native_wheel=eqs_probe::installed();
     for(auto& table:tables_){
         const auto& target=custom?table.custom:table.original;
         for(std::size_t i=0;i<target.size();){
@@ -108,7 +109,7 @@ void NativeArsenal::apply_tables(bool custom){
             // is rendered by its existing per-slot custom icon overlay.
             // This is the icon field only, not ammo, ownership, gameplay or
             // the rest of the custom projection.
-            const bool shared_wheel_icon=eqs_probe::installed() &&
+            const bool shared_wheel_icon=native_wheel &&
                 table.original.size()==76 && i==0x38 && width==2;
             if(shared_wheel_icon){
                 std::memcpy(api_->memory+table.address+i,table.original.data()+i,width);
@@ -215,14 +216,26 @@ void NativeArsenal::give_item(int native_item, int equip, bool custom_grant, Giv
     if (!ready_ || level_ != grant_level || api_->loaded_level() != grant_level) return;
 
     if (carrier) commit();
+    const bool native_wheel=eqs_probe::installed();
     const auto quick_after = read<Quick>(quick_address);
-    for (std::size_t slot = 0; slot < quick_after.size(); ++slot) {
-        const int value = quick_after[slot];
-        if (value == quick_before[slot] || value < 0 ||
-            value > int(arsenal::Registry::MaximumNativeKey)) continue;
-        const auto key = revolverator && value == native_item
-            ? arsenal::RevolveratorKey : arsenal::WeaponKey(value);
-        registry_.assign_quick(slot, key);
+    if (native_wheel) {
+        if (revolverator) {
+            // Undo only the native grant's first-empty-slot insertion.
+            const auto empty=std::find(quick_before.begin(),quick_before.end(),0);
+            if(empty!=quick_before.end()){
+                const auto slot=std::size_t(empty-quick_before.begin());
+                if(quick_after[slot]==native_item)write<int>(quick_address+unsigned(slot)*sizeof(int),0);
+            }
+        }
+    } else {
+        for (std::size_t slot = 0; slot < quick_after.size(); ++slot) {
+            const int value = quick_after[slot];
+            if (value == quick_before[slot] || value < 0 ||
+                value > int(arsenal::Registry::MaximumNativeKey)) continue;
+            const auto key = revolverator && value == native_item
+                ? arsenal::RevolveratorKey : arsenal::WeaponKey(value);
+            registry_.assign_quick(slot, key);
+        }
     }
 
     if (!carrier) return;
@@ -247,7 +260,7 @@ void NativeArsenal::give_item(int native_item, int equip, bool custom_grant, Giv
     // EQS owns the visible and saved native wheel assignments. Auto-picking
     // an empty slot in Revolverator's private logical registry can otherwise
     // draw a Revolverator icon on top of an unrelated EQS gadget.
-    if (!eqs_probe::installed() &&
+    if (!native_wheel &&
         registry_.owned(arsenal::RevolveratorKey) &&
         std::find(quick.begin(), quick.end(), arsenal::RevolveratorKey) == quick.end()) {
         const auto empty = std::find(quick.begin(), quick.end(), 0u);

@@ -68,27 +68,20 @@ This API is now available in the public EQS release and does not make EQS
 a dependency of Revolverator. Without it, normal single-wheel behaviour
 is unchanged.
 
-When the API is available, EQS remains the owner of the native eight-slot
-favourites and its independent pages. Revolverator no longer projects its
-single-page logical bindings over EQS's native wheel, avoids custom overlays
-on secondary pages and keeps the shared Walloper (native item 18) icon
-definition stable. Revolverator still has its own distinct logical weapon
-key `0x10012`, but the EQS API reports only **native IDs**, so assigning
-Revolverator as a unique custom weapon on pages 2 and later is **not**
-implemented. Windows-only detection uses the already-loaded EQS module and
-introduces no loader or binary dependency.
-
-**Scope:** This integration preserves EQS's independent native page
-assignments and prevents custom Revolverator overlays from appearing on
-unrelated secondary pages. EQS's v1 API supplies native IDs only, so separate
-logical Revolverator bindings on secondary pages are not part of this change.
+With EQS enabled, EQS owns the editor, the native favourites in the game
+save and the extra pages in its sidecar. Revolverator reads the selected
+page through the API and leaves the wheel slots and icons to EQS. The
+weapon remains selectable from the pause menu. Custom weapon bindings in
+an EQS wheel require a future API that can store custom weapon identities.
+Existing Revolverator favourites remain in its own data for use when EQS
+is disabled. Detection uses the already loaded Windows module.
 
 Compatibility checks: verify distinct native weapon layouts across pages 1–4
 with Revolverator equipped and unequipped; edit assignments on pages 2–4,
-save and reload, and verify all EQS pages retain their contents. Repeat with
-EQS disabled to confirm Revolverator's original single-wheel behaviour.
-These checks assess this patch's interoperability; unrelated pre-existing
-Revolverator bugs are not changed by it.
+save and reload, and verify all EQS pages retain their contents. Confirm
+that assigning the custom weapon cannot insert a native item in an EQS
+slot. Repeat with EQS disabled to confirm the original single-wheel
+behaviour.
 
 ## Evidence boundary
 

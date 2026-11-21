@@ -257,6 +257,14 @@ int NativeWeaponMenu::slots_update(unsigned screen,Call original){
     if(!original)return 0;
     if(!supported()||screen!=screen_address(QuickRing))return original(screen);
     const auto key=selected_key();const auto buttons=read<unsigned>(pressed_at());
+    if(eqs_probe::installed()){
+        // EQS v1 can store native items only. A custom choice cannot be
+        // confirmed as its transport ID in the native page editor.
+        const bool custom=model_.registry().descriptor(key)!=nullptr;
+        ScopedWrite<unsigned> confirm(*this,pressed_at(),custom?buttons&~Cross:buttons);
+        Projection view(model_,custom?0:key,true);
+        return original(screen);
+    }
     int slot=read<int>(screen+0x50);
     if(slot<0||slot>=8)return original(screen);
     if(buttons&8)slot=(slot+1)%8;
@@ -266,20 +274,8 @@ int NativeWeaponMenu::slots_update(unsigned screen,Call original){
         Projection view(model_,key,true);result=original(screen);
     }
     if((buttons&Cross)&&owned(key)){
-        // The original hook already modifies the chosen native slot.
-        // EQS owns *all* native wheel pages, including page one. Never
-        // replace its visible editor ring with the complete Revolverator
-        // one-page logical registry when EQS is present.
-        if(eqs_probe::installed()){
-            // On page one, track logical identity for custom render/equip.
-            // Secondary pages need a separate per-page custom-key store,
-            // which this experiment deliberately does not implement.
-            if(!eqs_probe::editor_secondary())
-                model_.registry().assign_quick(unsigned(slot),key);
-        }else{
-            model_.registry().assign_quick(unsigned(slot),key);
-            write_native_slots(screen);
-        }
+        model_.registry().assign_quick(unsigned(slot),key);
+        write_native_slots(screen);
     }
     return result;
 }
@@ -302,9 +298,7 @@ int NativeWeaponMenu::quick_store(unsigned screen,Call original){
 }
 int NativeWeaponMenu::quick_draw(unsigned screen,Call original){
     if(!original)return 0;
-    // Draw secondary pages from their own native slots, not Revolverator's
-    // single-page logical icon array. Custom icons remain a future task.
-    if(eqs_probe::editor_secondary())return original(screen);
+    if(eqs_probe::installed())return original(screen);
     if(!supported()||screen!=screen_address(QuickRing)||!valid(screen,0x54))return original(screen);
     auto before=read<std::array<int,8>>(screen+0x30),safe=before;
     const auto& keys=model_.registry().quick();
