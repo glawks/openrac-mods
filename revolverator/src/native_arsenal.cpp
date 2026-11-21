@@ -152,6 +152,33 @@ void NativeArsenal::project(arsenal::WeaponKey key){
     const bool custom=descriptor&&descriptor->carrier==item;
     const auto next=custom?key:arsenal::NativeWalloperKey;
     if(next!=projected_){commit();projected_=next;apply_tables(custom);apply_state(next);}
+    else if(custom){
+        // Same-level Ratchet respawns can reinitialise the native level's
+        // vendor/ammo table while preserving our logical custom selection.
+        // The projection then stays 65554 and no transition re-applies the
+        // saved capacity. Native TakeAmmo may report success without actually
+        // reducing ammunition if the native cap is zero.
+        //
+        // Re-assert only our five ammo metadata fields, only when a field has
+        // reverted *exactly* to the captured stock value. Never overwrite
+        // foreign values or change the custom ammo counter itself. In
+        // particular, don't do this while Walloper is projected.
+        const unsigned native_vendor=level(0x1c40b0)+item*24;
+        for(auto& table:tables_){
+            if(table.address!=native_vendor||table.original.size()!=24)continue;
+            for(const unsigned offset:{8u,10u,12u,14u,18u}){
+                if(!field_owned(table.mask,offset,2))continue;
+                std::uint16_t original{},desired{},actual{};
+                std::memcpy(&original,table.original.data()+offset,2);
+                std::memcpy(&desired,table.custom.data()+offset,2);
+                std::memcpy(&actual,api_->memory+table.address+offset,2);
+                if(desired!=original&&actual==original){
+                    std::memcpy(api_->memory+table.address+offset,&desired,2);
+                    std::memcpy(table.last.data()+offset,&desired,2);
+                }
+            }
+        }
+    }
     presentation_.select_identity(custom);
 }
 void NativeArsenal::restore_gameplay(){
