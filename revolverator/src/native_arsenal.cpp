@@ -100,7 +100,20 @@ void NativeArsenal::apply_tables(bool custom){
             const auto width=field_width(target.size(),i);
             // Only fields owned by the adapter are projected. Unrelated damage,
             // animation and material edits remain under their original owner.
-            if(field_owned(table.mask,i,width)){
+            // EQS has multiple wheels of *native* weapon IDs. Revolverator
+            // and Walloper share carrier 18, so changing the carrier's global
+            // icon definition makes every Walloper on every EQS page appear to
+            // be Revolverator whenever it is equipped. Keep the stock icon
+            // stable under EQS; Revolverator's page-one explicit assignment
+            // is rendered by its existing per-slot custom icon overlay.
+            // This is the icon field only, not ammo, ownership, gameplay or
+            // the rest of the custom projection.
+            const bool shared_wheel_icon=eqs_probe::installed() &&
+                table.original.size()==76 && i==0x38 && width==2;
+            if(shared_wheel_icon){
+                std::memcpy(api_->memory+table.address+i,table.original.data()+i,width);
+                std::memcpy(table.last.data()+i,table.original.data()+i,width);
+            }else if(field_owned(table.mask,i,width)){
                 std::memcpy(api_->memory+table.address+i,target.data()+i,width);
                 std::memcpy(table.last.data()+i,target.data()+i,width);
             }
