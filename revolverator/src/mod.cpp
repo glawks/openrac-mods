@@ -17,6 +17,7 @@
 #include "native_gold_vendor.hpp"
 #include "native_acquisition.hpp"
 #include "revolverator_api.h"
+#include "eqs_probe.hpp"
 #include <memory>
 #include <exception>
 #include <cstring>
@@ -426,9 +427,17 @@ int item_ammo(unsigned screen){
  ArsenalScope view(s.arsenal,key);return item_ammo_original(screen);
 }
 void quick_init(unsigned element){
- if(session){session->arsenal.project_quick_slots();ArsenalScope stock(session->arsenal,arsenal::NativeWalloperKey);quick_init_original(element);}
+ // When EQS is present, its native page-one save and HUD cache must remain
+ // authoritative. Projecting the one-page Revolverator favourites here
+ // would also invalidate EQS's strict HUD layout check on later pages.
+ const bool eqs_present=eqs_probe::installed();
+ if(session){
+  if(!eqs_present)session->arsenal.project_quick_slots();
+  ArsenalScope stock(session->arsenal,arsenal::NativeWalloperKey);
+  quick_init_original(element);
+ }
  else quick_init_original(element);
- if(!session)return;
+ if(!session||eqs_present)return;
  auto& s=*session;auto& w=s.world;
  const auto records=w.level(0x17dac0);
  if(!Memory::valid(records,8*0x1c))return;
@@ -438,8 +447,26 @@ void quick_init(unsigned element){
 }
 arsenal::WeaponKey selected_quick(unsigned element){
  if(!session||!Memory::valid(element,0x80))return 0;
+ // Never reuse page-one logical identity to select a secondary-page weapon.
+ // Native weapons may still equip through the underlying game logic.
+ if(eqs_probe::gameplay_secondary())return 0;
  const int slot=session->world.read<int>(element+0x74);
- return slot>=0&&slot<8?session->registry.quick()[unsigned(slot)]:0;
+ if(slot<0||slot>=8)return 0;
+ auto& s=*session;
+ if(eqs_probe::installed()){
+  // The game/EQS native page-one slots are authoritative. Revolverator's
+  // separate single-page logical registry can otherwise interpret an
+  // unrelated gadget as its custom carrier after a purchase or old save.
+  const auto address=s.world.global(0x141ea0)+unsigned(slot)*4;
+  if(!Memory::valid(address,4))return 0;
+  const int native=s.world.read<int>(address);
+  if(native<0||native>int(arsenal::Registry::MaximumNativeKey))return 0;
+  const auto logical=s.registry.quick()[unsigned(slot)];
+  if(logical==arsenal::RevolveratorKey&&native==int(arsenal::NativeWalloperKey))
+   return logical;
+  return arsenal::WeaponKey(native);
+ }
+ return s.registry.quick()[unsigned(slot)];
 }
 void quick_update(unsigned element){
  if(!session){quick_update_original(element);return;}
@@ -454,9 +481,24 @@ void quick_update(unsigned element){
 }
 int quick_draw(unsigned element){
  if(!session)return quick_draw_original(element);
+ if(eqs_probe::gameplay_secondary())return quick_draw_original(element);
  auto& s=*session;const auto key=selected_quick(element);int result;
- {ArsenalScope view(s.arsenal,key?key:s.registry.equipped());
-  result=s.presentation.draw_quick_selector(element,quick_draw_original,s.registry.quick());}
+ {
+  auto bindings=s.registry.quick();
+  if(eqs_probe::installed()){
+   // Overlay a custom icon only where the actual native wheel uses its
+   // carrier. Do not draw a fake Revolverator icon over an EQS gadget.
+   const auto saved=s.world.global(0x141ea0);
+   for(unsigned i=0;i<bindings.size();++i){
+    if(bindings[i]!=arsenal::RevolveratorKey)continue;
+    const auto address=saved+i*4;
+    if(!Memory::valid(address,4)||s.world.read<int>(address)!=int(arsenal::NativeWalloperKey))
+     bindings[i]=0;
+   }
+  }
+  ArsenalScope view(s.arsenal,key?key:s.registry.equipped());
+  result=s.presentation.draw_quick_selector(element,quick_draw_original,bindings);
+ }
  s.restore_context();return result;
 }
 void serialize(unsigned destination){
