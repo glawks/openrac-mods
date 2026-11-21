@@ -67,7 +67,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: revolverator-eqs-PR-windows-x86_64-TEST-ONLY
-          path: dist/revolverator-eqs-compat-windows-x86_64-TEST-ONLY.zip
+          path: dist/revolverator-eqs-PR-windows-x86_64-TEST-ONLY.zip
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v4
