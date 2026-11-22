@@ -258,7 +258,7 @@ jobs:
   # download against.
   merge:
     needs: [build, scripts, apworld]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/ammo-max-buy-all') && !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
