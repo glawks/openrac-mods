@@ -18,7 +18,7 @@ name: build
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, test/ammo-max-only]
     tags: ["v*", "*-v*"]
   pull_request:
   workflow_dispatch:
@@ -33,7 +33,7 @@ concurrency:
 jobs:
   # A lightweight manual test for the integration branch, without building other mods.
   ammo_max_integration_test:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/ammo-max-only' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/test/ammo-max-only' }}
     name: ammo-max Windows x64 test
     runs-on: windows-2025
     timeout-minutes: 20
@@ -84,7 +84,7 @@ jobs:
 
   # What the repository holds: native mods to build (a top CMakeLists.txt), script mods to package.
   detect:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/ammo-max-only') }}
+    if: ${{ !((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/test/ammo-max-only') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -282,7 +282,7 @@ jobs:
   # download against.
   merge:
     needs: [build, scripts, apworld]
-    if: ${{ !(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/ammo-max-only') && !cancelled() && !contains(needs.*.result, 'failure') }}
+    if: ${{ !((github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/test/ammo-max-only') && !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
